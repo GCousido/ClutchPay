@@ -1,0 +1,28 @@
+{
+  "register": {
+    "register": "Register",
+    "email": "Email",
+    "name": "Name",
+    "surnames": "Surname",
+    "phone": "Phone",
+    "password": "Password",
+    "confirmPassword": "Confirm Password",
+    "required": "This field is required",
+    "passwordMismatch": "Passwords do not match",
+    "registerButton": "Register",
+    "goToLogin": "Go to Login",
+    "failedRegister": "Failed to register user",
+    "successfulRegister": "User successfully registered"
+  },
+  "login": {
+    "login": "Login",
+    "email": "Email",
+    "password": "Password",
+    "signIn": "Sign In",
+    "goToRegister": "Go to Register",
+    "requiredEmail": "Email is required",
+    "requiredPassword": "Password is required",
+    "incorrectCredentials": "Incorrect email or password",
+    "loginSuccess": "Login successful"
+  }
+}
