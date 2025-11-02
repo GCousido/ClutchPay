@@ -1,0 +1,83 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                Int       @id @default(autoincrement())
+  email             String    @unique
+  name              String
+  surnames          String
+  phone             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  issuedInvoices    Invoice[] @relation("IssuerUser")
+  owedInvoices      Invoice[] @relation("DebtorUser")
+
+  @@map("users")
+}
+
+model Invoice {
+  id                Int       @id @default(autoincrement())
+  invoiceNumber     String    @unique
+  issuerUserId      Int
+  debtorUserId      Int
+  description       String    @db.Text
+  totalAmount       Decimal   @db.Decimal(10, 2)
+  tax               Decimal   @db.Decimal(10, 2) @default(0)
+  status            InvoiceStatus @default(PENDING)
+  issueDate         DateTime
+  dueDate           DateTime
+  pdfUrl            String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // TODO: Check Cascades onDelete behavior
+  issuerUser        User      @relation("IssuerUser", fields: [issuerUserId], references: [id], onDelete: Cascade)
+  debtorUser        User      @relation("DebtorUser", fields: [debtorUserId], references: [id], onDelete: Cascade)
+  payments          Payment[]
+
+  @@index([issuerUserId])
+  @@index([debtorUserId])
+  @@map("invoices")
+}
+
+model Payment {
+  id                Int       @id @default(autoincrement())
+  invoiceId         Int
+  amountPaid        Decimal   @db.Decimal(10, 2)
+  paymentDate       DateTime
+  paymentMethod     PaymentMethod
+  paymentReference  String?
+  pdfReceiptUrl     String
+  subject           String?   @db.Text
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // TODO: Check Cascades onDelete behavior
+  invoice           Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("payments")
+}
+
+// Enums
+enum InvoiceStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELED
+}
+
+enum PaymentMethod {
+  PAYPAL
+  VISA
+  MASTERCARD
+  OTHER
+}
