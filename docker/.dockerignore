@@ -1,0 +1,4 @@
+.git
+.gitignore
+docker-compose.yml
+setup_dev_env.ps1
