@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import bcrypt from 'bcrypt'
 
 const prisma = new PrismaClient()
 
@@ -64,15 +65,17 @@ async function main() {
 
   // Create 40 users
   console.log('👥 Creating 40 users...')
-  const userDatas = Array.from({ length: 40 }).map((_, i) => ({
-    email: `user${i + 1}@example.com`,
-    password: `password${i}`,
-    name: `FirstName${i + 1}`,
-    surnames: `LastName${i + 1} Surname${i + 1}`,
-    phone: randomEuropeanPhone(),
-    country: randomCountry(),
-    imageUrl: randomImageUrl(i + 1),
-  }))
+  const userDatas = await Promise.all(
+    Array.from({ length: 40 }).map(async (_, i) => ({
+      email: `user${i + 1}@example.com`,
+      password: await bcrypt.hash(`password${i}`, 10),
+      name: `FirstName${i + 1}`,
+      surnames: `LastName${i + 1} Surname${i + 1}`,
+      phone: randomEuropeanPhone(),
+      country: randomCountry(),
+      imageUrl: randomImageUrl(i + 1),
+    }))
+  )
 
   const users: any[] = []
   for (const userData of userDatas) {
