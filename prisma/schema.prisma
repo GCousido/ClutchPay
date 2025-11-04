@@ -10,15 +10,24 @@ datasource db {
 model User {
   id                Int       @id @default(autoincrement())
   email             String    @unique
+  password          String    @db.VarChar(255)
   name              String
   surnames          String
   phone             String?
+  country           String?
+  imageUrl          String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
   // Relations
   issuedInvoices    Invoice[] @relation("IssuerUser")
   owedInvoices      Invoice[] @relation("DebtorUser")
+
+  // Reflexive Many-to-Many for Contacts
+  contacts     User[] @relation("UserContacts")
+  contactOf    User[] @relation("UserContacts")
+
+  notifications  Notification[]
 
   @@map("users")
 }
@@ -28,20 +37,21 @@ model Invoice {
   invoiceNumber     String    @unique
   issuerUserId      Int
   debtorUserId      Int
+  subject           String    @db.Text
   description       String    @db.Text
-  totalAmount       Decimal   @db.Decimal(10, 2)
-  tax               Decimal   @db.Decimal(10, 2) @default(0)
+  amount            Decimal   @db.Decimal(10, 2)
   status            InvoiceStatus @default(PENDING)
-  issueDate         DateTime
-  dueDate           DateTime
-  pdfUrl            String
+  issueDate         DateTime  
+  dueDate           DateTime?
+  invoicePdfUrl     String
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  // TODO: Check Cascades onDelete behavior
-  issuerUser        User      @relation("IssuerUser", fields: [issuerUserId], references: [id], onDelete: Cascade)
-  debtorUser        User      @relation("DebtorUser", fields: [debtorUserId], references: [id], onDelete: Cascade)
+  issuerUser        User      @relation("IssuerUser", fields: [issuerUserId], references: [id])
+  debtorUser        User      @relation("DebtorUser", fields: [debtorUserId], references: [id])
+
   payments          Payment[]
+  notifications  Notification[]
 
   @@index([issuerUserId])
   @@index([debtorUserId])
@@ -51,20 +61,30 @@ model Invoice {
 model Payment {
   id                Int       @id @default(autoincrement())
   invoiceId         Int
-  amountPaid        Decimal   @db.Decimal(10, 2)
   paymentDate       DateTime
   paymentMethod     PaymentMethod
   paymentReference  String?
-  pdfReceiptUrl     String
+  receiptPdfUrl     String
   subject           String?   @db.Text
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  // TODO: Check Cascades onDelete behavior
-  invoice           Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoice           Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
 
   @@index([invoiceId])
   @@map("payments")
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  invoiceId Int
+  type      NotificationType
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id])
 }
 
 // Enums
@@ -80,4 +100,12 @@ enum PaymentMethod {
   VISA
   MASTERCARD
   OTHER
+}
+
+enum NotificationType {
+  INVOICE_ISSUED          // A new invoice has been issued to the user
+  PAYMENT_DUE             // The payment deadline for an invoice is approaching
+  PAYMENT_OVERDUE         // The invoice is overdue and unpaid
+  PAYMENT_RECEIVED        // A payment has been received for an issued invoice
+  INVOICE_CANCELED        // The invoice has been canceled or voided
 }
