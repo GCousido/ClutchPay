@@ -103,6 +103,8 @@ npx prisma migrate dev --name init
 Write-Host "Generating Prisma client..."
 npx prisma generate
 
+Write-Host "Add seed data to database..."
+npx tsx prisma/seed.ts
 # Optional: Run lint and format if scripts are defined in package.json (uncomment if needed)
 # Write-Host "Running lint and formatting tasks..."
 # pnpm run lint
