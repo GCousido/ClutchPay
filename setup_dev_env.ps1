@@ -97,7 +97,7 @@ Pop-Location
 
 # Initialize Prisma migration
 Write-Host "Execute Prisma migration ..."
-npx prisma migrate dev --name init
+npx prisma migrate reset --force
 
 # Generate Prisma client
 Write-Host "Generating Prisma client..."
@@ -111,6 +111,7 @@ if ($seedChoice -eq "y") {
 } else {
     Write-Host "Skipping seed data step."
 }
+
 Write-Host "App running at http://localhost:3000"
 Write-Host "Start development server..."
 pnpm run dev
