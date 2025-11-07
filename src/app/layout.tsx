@@ -1,3 +1,5 @@
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { getServerSession } from "next-auth/next";
 import { NextIntlClientProvider } from 'next-intl';
 import Link from 'next/link';
 import LanguageSelector from '../components/LanguageSelector';
@@ -6,14 +8,13 @@ import getRequestConfig from '../i18n/request';
 
 import './globals.css';
 
-const user = null; // Simulated user authentication status
-
 type RootLayoutProps = {
   children: React.ReactNode;
 };
 
 export default async function RootLayout({ children }: RootLayoutProps) {
   const { locale, messages } = await getRequestConfig();
+  const session = await getServerSession(authOptions);
 
   return (
     <html lang={locale}>
@@ -25,7 +26,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
             <nav className="flex justify-between items-center px-8">
               <LogoIcon />
               <div className="flex items-center gap-3 ml-auto">
-                {!user ? (
+                {!session?.user ? (
                   <>
                     <Link
                       href="/login"
@@ -42,7 +43,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
                   </>
                 ) : (
                   <img
-                    src={user?.profileImageUrl || "/default-profile.png"}
+                    src={session?.user.imageUrl || "/default-profile.png"}
                     alt="Profile"
                     className="w-10 h-10 rounded-full border-2 border-green-200 object-cover"
                   />
