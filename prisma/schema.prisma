@@ -50,7 +50,7 @@ model Invoice {
   issuerUser        User      @relation("IssuerUser", fields: [issuerUserId], references: [id])
   debtorUser        User      @relation("DebtorUser", fields: [debtorUserId], references: [id])
 
-  payments          Payment[]
+  payment          Payment?
   notifications  Notification[]
 
   @@index([issuerUserId])
@@ -60,7 +60,7 @@ model Invoice {
 
 model Payment {
   id                Int       @id @default(autoincrement())
-  invoiceId         Int
+  invoiceId         Int       @unique
   paymentDate       DateTime
   paymentMethod     PaymentMethod
   paymentReference  String?
