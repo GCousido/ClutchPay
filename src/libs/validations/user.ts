@@ -1,14 +1,14 @@
 import { parsePhoneNumberWithError } from 'libphonenumber-js';
 import { z } from 'zod';
 
-// Validación de teléfono personalizada
+// Custom phone validation
 const phoneValidation = z
   .string()
   .optional()
   .nullable()
   .refine(
     (value) => {
-      if (!value) return true; // Opcional
+      if (!value) return true;
       try {
         const phone = parsePhoneNumberWithError(value);
         return phone.isValid();
@@ -16,105 +16,105 @@ const phoneValidation = z
         return false;
       }
     },
-    { message: 'Número de teléfono inválido (incluye el prefijo internacional)' }
+    { message: 'Invalid phone number (include the international prefix)' }
   )
   .transform((value) => {
     if (!value) return null;
     const phone = parsePhoneNumberWithError(value);
-    return phone.format('E.164'); // Formato estándar: +34612345678
+    return phone.format('E.164'); // Standard format: +34612345678
   });
 
-// Validación de contraseña segura
+// Secure password validation
 const passwordValidation = z
   .string()
-  .min(8, 'La contraseña debe tener al menos 8 caracteres')
-  .max(255, 'La contraseña no puede exceder 255 caracteres')
+  .min(8, 'Password must be at least 8 characters long')
+  .max(255, 'Password must not exceed 255 characters')
   .refine((password) => /[A-Z]/.test(password), {
-    message: 'La contraseña debe contener al menos una mayúscula',
+    message: 'Password must contain at least one uppercase letter',
   })
   .refine((password) => /[a-z]/.test(password), {
-    message: 'La contraseña debe contener al menos una minúscula',
+    message: 'Password must contain at least one lowercase letter',
   })
   .refine((password) => /\d/.test(password), {
-    message: 'La contraseña debe contener al menos un número',
+    message: 'Password must contain at least one number',
   })
   .refine((password) => /[!@#$%^&*(),.?":{}|<>]/.test(password), {
-    message: 'La contraseña debe contener al menos un carácter especial',
+    message: 'Password must contain at least one special character',
   });
 
-// Schema para crear usuario
+// Schema for creating a user
 export const userCreateSchema = z.object({
   email: z
     .string()
-    .email('Email inválido')
+    .email('Invalid email')
     .toLowerCase()
     .trim(),
   password: passwordValidation,
   name: z
     .string()
-    .min(2, 'El nombre debe tener al menos 2 caracteres')
-    .max(100, 'El nombre no puede exceder 100 caracteres')
+    .min(2, 'Name must be at least 2 characters')
+    .max(100, 'Name must not exceed 100 characters')
     .trim(),
   surnames: z
     .string()
-    .min(2, 'Los apellidos deben tener al menos 2 caracteres')
-    .max(100, 'Los apellidos no pueden exceder 100 caracteres')
+    .min(2, 'Surnames must be at least 2 characters')
+    .max(100, 'Surnames must not exceed 100 characters')
     .trim(),
   phone: phoneValidation,
   country: z
     .string()
-    .length(2, 'El código de país debe ser ISO 3166-1 alpha-2 (2 caracteres)')
+    .length(2, 'Country code must be ISO 3166-1 alpha-2 (2 characters)')
     .toUpperCase()
     .optional()
     .nullable(),
   imageUrl: z
     .string()
-    .url('URL de imagen inválida')
+    .url('Invalid image URL')
     .optional()
     .nullable(),
 });
 
-// Schema para actualizar usuario (todos los campos opcionales excepto validaciones)
+// Schema for updating a user (all fields optional except validations)
 export const userUpdateSchema = z.object({
   email: z
     .string()
-    .email('Email inválido')
+    .email('Invalid email')
     .toLowerCase()
     .trim()
     .optional(),
   password: passwordValidation.optional(),
   name: z
     .string()
-    .min(2, 'El nombre debe tener al menos 2 caracteres')
-    .max(100, 'El nombre no puede exceder 100 caracteres')
+    .min(2, 'Name must be at least 2 characters')
+    .max(100, 'Name must not exceed 100 characters')
     .trim()
     .optional(),
   surnames: z
     .string()
-    .min(2, 'Los apellidos deben tener al menos 2 caracteres')
-    .max(100, 'Los apellidos no pueden exceder 100 caracteres')
+    .min(2, 'Surnames must be at least 2 characters')
+    .max(100, 'Surnames must not exceed 100 characters')
     .trim()
     .optional(),
   phone: phoneValidation,
   country: z
     .string()
-    .length(2, 'El código de país debe ser ISO 3166-1 alpha-2')
+    .length(2, 'Country code must be ISO 3166-1 alpha-2')
     .toUpperCase()
     .optional()
     .nullable(),
   imageUrl: z
     .string()
-    .url('URL de imagen inválida')
+    .url('Invalid image URL')
     .optional()
     .nullable(),
 });
 
-// Schema para agregar contactos (many-to-many)
+// Schema to add contacts (many-to-many)
 export const addContactSchema = z.object({
-  contactId: z.number().int().positive('ID de contacto inválido'),
+  contactId: z.number().int().positive('Invalid contact ID'),
 });
 
-// Tipos TypeScript inferidos
+// Export inferred types
 export type UserCreateInput = z.infer<typeof userCreateSchema>;
 export type UserUpdateInput = z.infer<typeof userUpdateSchema>;
 export type AddContactInput = z.infer<typeof addContactSchema>;

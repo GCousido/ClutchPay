@@ -1,6 +1,7 @@
 import { db } from "@/libs/db";
 import { formatZodError } from "@/libs/validations";
 import { userCreateSchema } from '@/libs/validations/user';
+import { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 
@@ -8,7 +9,9 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    // Validación con Zod
+    console.log(body)
+
+    // Validate with Zod
     const parsed = userCreateSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
@@ -22,38 +25,57 @@ export async function POST(request: Request) {
 
     const data = parsed.data;
 
-    // Comprobar si el email ya existe (buscar por email solamente)
+    // Check if email already exists
     const existing = await db.user.findUnique({
-      where: { email: data.email },
+      where: { email: data.email},
     });
 
     if (existing) {
       return NextResponse.json(
         {
           message: "Email already exists",
-          errors: [{ field: "email", message: "El correo ya está en uso" }],
+          errors: [{ field: "email", message: "Email already in use" }],
         },
         { status: 400 }
       );
     }
 
-    // Hash de la contraseña
-    const hashedPassword = bcrypt.hashSync(data.password, 10);
+    // Hash Password
+    const hashedPassword = await bcrypt.hash(data.password, 10);
 
-    // Crear usuario
-    const newUser = await db.user.create({
-      data: {
-        email: data.email,
-        password: hashedPassword,
-        name: data.name,
-        surnames: data.surnames,
-        phone: data.phone ?? null,
-        country: data.country ?? null,
-        imageUrl: data.imageUrl ?? null,
-      },
-    });
+    // Create user - catch unique constraint error (P2002) to handle race conditions
+    let newUser;
+    try {
+      newUser = await db.user.create({
+        data: {
+          email: data.email,
+          password: hashedPassword,
+          name: data.name,
+          surnames: data.surnames,
+          phone: data.phone ?? null,
+          country: data.country ?? null,
+          imageUrl: data.imageUrl ?? null,
+        },
+      });
+    } catch (error: any) {
+      // Handle Prisma unique constraint error (P2002)
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002" &&
+        (error.meta?.target as string[] || []).includes("email")
+      ) {
+        return NextResponse.json(
+          {
+            message: "Email already exists",
+            errors: [{ field: "email", message: "Email already in use" }],
+          },
+          { status: 400 }
+        );
+      }
+      throw error;
+    }
 
-    // Ocultar password en la respuesta
+    // Hide password in response
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _, ...user } = newUser;
 

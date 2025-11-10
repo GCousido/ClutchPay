@@ -1,6 +1,6 @@
 // lib/auth.ts
 import { db } from '@/libs/db';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 
@@ -12,21 +12,22 @@ export const authOptions: NextAuthOptions = {
         email: { 
           label: 'Email', 
           type: 'email',
-          placeholder: 'usuario@example.com',
+          placeholder: 'user@example.com',
         },
         password: { 
-          label: 'Contraseña', 
+          label: 'Password', 
           type: 'password',
           placeholder: '••••••••',
         },
       },
       async authorize(credentials) {
-        // Validar que existan credenciales
+        // Validate credentials
         if (!credentials?.email || !credentials?.password) {
-          throw new Error('Email y contraseña requeridos');
+          // FIXME: Improve error handling
+          throw new Error('Email and Password required');
         }
 
-        // Buscar usuario por email
+        // Search user in the database by email
         const user = await db.user.findUnique({
           where: { email: credentials.email },
           select: {
@@ -41,22 +42,24 @@ export const authOptions: NextAuthOptions = {
           },
         });
 
-        // Verificar que el usuario existe
+        // Verify user exists
         if (!user) {
-          throw new Error('Usuario no encontrado');
+          // FIXME: Improve error handling
+          throw new Error('User not found');
         }
 
-        // Verificar contraseña
+        // Verify password
         const isPasswordValid = await bcrypt.compare(
           credentials.password,
           user.password
         );
 
         if (!isPasswordValid) {
-          throw new Error('Contraseña incorrecta');
+          // FIXME: Improve error handling
+          throw new Error('Invalid password');
         }
 
-        // Retornar usuario para la sesión
+        // Return User for session
         return {
           id: user.id.toString(),
           email: user.email,
@@ -70,9 +73,9 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
 
-  // Callbacks para personalizar sesión y JWT
+  // Callbacks customizing JWT and Session
   callbacks: {
-    // Ejecuta cuando se crea o actualiza el JWT
+    // This execute when JWT is created/updated
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
@@ -85,7 +88,7 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
 
-    // Ejecuta cuando se accede a la sesión
+    // This execute when session is checked/created
     async session({ session, token }) {
       if (session.user) {
         session.user.id = parseInt(token.id as string);
@@ -99,25 +102,26 @@ export const authOptions: NextAuthOptions = {
     },
   },
 
-  // Páginas personalizadas
+  // TODO: check routes to match frontend and match URL params
   pages: {
     signIn: '/auth/login',
     error: '/auth/error',
   },
 
-  // TODO: ver JWT y como funciona
-  // Configuración de sesión
+  // TODO: check JWT
+  // Session configuration
   session: {
     strategy: 'jwt',
-    maxAge: 30 * 24 * 60 * 60, // 30 días
-    updateAge: 24 * 60 * 60, // Actualizar cada 24 horas
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+    updateAge: 24 * 60 * 60, // Update every 24 hours
   },
 
-  // Configuración de JWT
+  // JWT configuration
   jwt: {
     secret: process.env.NEXTAUTH_SECRET,
-    maxAge: 30 * 24 * 60 * 60, // 30 días
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
 
+  // Secret for NextAuth
   secret: process.env.NEXTAUTH_SECRET,
 };

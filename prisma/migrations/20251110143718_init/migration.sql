@@ -90,6 +90,9 @@ CREATE INDEX "invoices_issuerUserId_idx" ON "invoices"("issuerUserId");
 CREATE INDEX "invoices_debtorUserId_idx" ON "invoices"("debtorUserId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "payments_invoiceId_key" ON "payments"("invoiceId");
+
+-- CreateIndex
 CREATE INDEX "payments_invoiceId_idx" ON "payments"("invoiceId");
 
 -- CreateIndex

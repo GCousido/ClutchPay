@@ -1,76 +1,76 @@
 import { InvoiceStatus } from '@prisma/client';
 import { z } from 'zod';
 
-// Validación de montos decimales
+// Decimal amount validation
 const amountValidation = z
   .number()
-  .positive('El monto debe ser positivo')
-  .multipleOf(0.01, 'El monto debe tener máximo 2 decimales')
-  .max(99999999.99, 'El monto no puede exceder 99,999,999.99');
+  .positive('Amount must be positive')
+  .multipleOf(0.01, 'Amount must have at most 2 decimal places')
+  .max(99999999.99, 'Amount must not exceed 99,999,999.99');
 
-// Validación de fechas
+// Date validations
 const futureDateValidation = z
   .string()
-  .datetime('Formato de fecha inválido')
+  .datetime('Invalid date format')
   .refine(
     (date) => new Date(date) > new Date(),
-    { message: 'La fecha debe ser futura' }
+    { message: 'Date must be in the future' }
   );
 
 const pastOrPresentDateValidation = z
   .string()
-  .datetime('Formato de fecha inválido')
+  .datetime('Invalid date format')
   .refine(
     (date) => new Date(date) <= new Date(),
-    { message: 'La fecha no puede ser futura' }
+    { message: 'Date cannot be in the future' }
   );
 
-// Schema para crear factura
+// Schema to create an invoice
 export const invoiceCreateSchema = z
   .object({
     invoiceNumber: z
       .string()
-      .min(1, 'El número de factura es requerido')
-      .max(50, 'El número de factura no puede exceder 50 caracteres')
+      .min(1, 'Invoice number is required')
+      .max(50, 'Invoice number must not exceed 50 characters')
       .trim()
-      .regex(/^[A-Z0-9-]+$/, 'El número de factura solo puede contener letras mayúsculas, números y guiones'),
+      .regex(/^[A-Z0-9-]+$/, 'Invoice number can only contain uppercase letters, numbers and dashes'),
     issuerUserId: z
       .number()
       .int()
-      .positive('ID de emisor inválido'),
+      .positive('Invalid issuer ID'),
     debtorUserId: z
       .number()
       .int()
-      .positive('ID de deudor inválido'),
+      .positive('Invalid debtor ID'),
     subject: z
       .string()
-      .min(5, 'El asunto debe tener al menos 5 caracteres')
-      .max(500, 'El asunto no puede exceder 500 caracteres')
+      .min(5, 'Subject must be at least 5 characters')
+      .max(500, 'Subject must not exceed 500 characters')
       .trim(),
     description: z
       .string()
-      .min(10, 'La descripción debe tener al menos 10 caracteres')
-      .max(5000, 'La descripción no puede exceder 5000 caracteres')
+      .min(10, 'Description must be at least 10 characters')
+      .max(5000, 'Description must not exceed 5000 characters')
       .trim(),
     amount: amountValidation,
     status: z
-      .nativeEnum(InvoiceStatus)
+      .enum(InvoiceStatus)
       .default(InvoiceStatus.PENDING),
     issueDate: pastOrPresentDateValidation,
     dueDate: z
       .string()
-      .datetime('Formato de fecha inválido')
+      .datetime('Invalid date format')
       .optional()
       .nullable(),
     invoicePdfUrl: z
       .string()
-      .url('URL del PDF inválida')
-      .endsWith('.pdf', 'El archivo debe ser un PDF'),
+      .url('Invalid PDF URL')
+      .endsWith('.pdf', 'File must be a PDF'),
   })
   .refine(
     (data) => data.issuerUserId !== data.debtorUserId,
     {
-      message: 'El emisor y el deudor no pueden ser el mismo usuario',
+      message: 'Issuer and debtor cannot be the same user',
       path: ['debtorUserId'],
     }
   )
@@ -80,52 +80,52 @@ export const invoiceCreateSchema = z
       return new Date(data.dueDate) >= new Date(data.issueDate);
     },
     {
-      message: 'La fecha de vencimiento debe ser posterior a la fecha de emisión',
+      message: 'Due date must be after the issue date',
       path: ['dueDate'],
     }
   );
 
-// Schema para actualizar factura
+// Schema to update an invoice
 export const invoiceUpdateSchema = z
   .object({
     subject: z
       .string()
-      .min(5, 'El asunto debe tener al menos 5 caracteres')
-      .max(500, 'El asunto no puede exceder 500 caracteres')
+      .min(5, 'Subject must be at least 5 characters')
+      .max(500, 'Subject must not exceed 500 characters')
       .trim()
       .optional(),
     description: z
       .string()
-      .min(10, 'La descripción debe tener al menos 10 caracteres')
-      .max(5000, 'La descripción no puede exceder 5000 caracteres')
+      .min(10, 'Description must be at least 10 characters')
+      .max(5000, 'Description must not exceed 5000 characters')
       .trim()
       .optional(),
     amount: amountValidation.optional(),
-    status: z.nativeEnum(InvoiceStatus).optional(),
+    status: z.enum(InvoiceStatus).optional(),
     dueDate: z
       .string()
-      .datetime('Formato de fecha inválido')
+      .datetime('Invalid date format')
       .optional()
       .nullable(),
     invoicePdfUrl: z
       .string()
-      .url('URL del PDF inválida')
-      .endsWith('.pdf', 'El archivo debe ser un PDF')
+      .url('Invalid PDF URL')
+      .endsWith('.pdf', 'File must be a PDF')
       .optional(),
   })
   .refine(
     (data) => Object.keys(data).length > 0,
-    { message: 'Debe proporcionar al menos un campo para actualizar' }
+    { message: 'You must provide at least one field to update' }
   );
 
-// Schema para cambiar estado
+// Schema to change status
 export const invoiceStatusUpdateSchema = z.object({
-  status: z.nativeEnum(InvoiceStatus),
+  status: z.enum(InvoiceStatus),
 });
 
-// Schema para filtros de búsqueda
+// Schema for search filters
 export const invoiceFilterSchema = z.object({
-  status: z.nativeEnum(InvoiceStatus).optional(),
+  status: z.enum(InvoiceStatus).optional(),
   issuerUserId: z.number().int().positive().optional(),
   debtorUserId: z.number().int().positive().optional(),
   minAmount: z.number().positive().optional(),
