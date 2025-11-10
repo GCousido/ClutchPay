@@ -1,7 +1,9 @@
 'use client';
 
+import { signIn } from "next-auth/react";
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 
@@ -16,21 +18,29 @@ function LoginPage() {
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>();
   const [submitError, setSubmitError] = useState('');
   const [submitSuccess, setSubmitSuccess] = useState('');
+  const router = useRouter()
 
   const onSubmit = async (data: FormData) => {
     setSubmitError('');
     setSubmitSuccess('');
-    const res = await fetch('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
+    
+    const res = await signIn("credentials", {
+      email: data.email,
+      password: data.password,
+      redirect: false,
     });
 
     if (!res.ok) {
+      // TODO: add res.error handling
       setSubmitError(t('incorrectCredentials'));
       return;
+    } else {
+      // FIXME: show success message or not?
+      setSubmitSuccess(t('loginSuccess'));
+      // TODO: redirect to dashboard or another page
+      router.push('/dashboard')
+      router.refresh()
     }
-    setSubmitSuccess(t('loginSuccess'));
   };
 
   return (

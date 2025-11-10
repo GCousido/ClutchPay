@@ -12,7 +12,8 @@
     "registerButton": "Register",
     "goToLogin": "Go to Login",
     "failedRegister": "Failed to register user",
-    "successfulRegister": "User successfully registered"
+    "successfulRegister": "User successfully registered",
+    "country": "Country"
   },
   "login": {
     "login": "Login",
