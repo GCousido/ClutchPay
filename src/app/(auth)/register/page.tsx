@@ -9,8 +9,9 @@ import { useForm } from 'react-hook-form';
 type FormData = {
   email: string;
   name: string;
-  surname: string;
+  surnames: string;
   phone?: string;
+  country?: string;
   password: string;
   confirmPassword: string;
 };

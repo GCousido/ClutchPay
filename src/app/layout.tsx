@@ -1,4 +1,4 @@
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/libs/auth";
 import { getServerSession } from "next-auth/next";
 import { NextIntlClientProvider } from 'next-intl';
 import Link from 'next/link';
@@ -43,7 +43,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
                   </>
                 ) : (
                   <img
-                    src={session?.user.imageUrl || "/default-profile.png"}
+                    src={session?.user.image || "/default-profile.png"}
                     alt="Profile"
                     className="w-10 h-10 rounded-full border-2 border-green-200 object-cover"
                   />

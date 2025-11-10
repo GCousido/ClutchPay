@@ -7,15 +7,11 @@ export * from './user';
 // Helper para manejar errores de Zod
 import { ZodError } from 'zod';
 
-export function formatZodError(error: ZodError): Record<string, string> {
-  const formatted: Record<string, string> = {};
-  
-  error.errors.forEach((err) => {
-    const path = err.path.join('.');
-    formatted[path] = err.message;
-  });
-  
-  return formatted;
+export function formatZodError(error: ZodError): { field: string; message: string }[] {
+  return error.issues.map((issue) => ({
+    field: issue.path.join('.') || 'body',
+    message: issue.message,
+  }));
 }
 
 // Helper para validación async segura
