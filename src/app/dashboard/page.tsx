@@ -1,8 +1,43 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { ChangeEvent, useEffect, useState } from 'react';
 
 type EntityType = 'users' | 'invoices' | 'payments' | 'notifications';
+
+const INVOICE_STATUS_OPTIONS = ['PENDING', 'PAID', 'OVERDUE', 'CANCELED'] as const;
+const INVOICE_SORT_FIELDS = [
+  { value: 'issueDate', label: 'Issue Date' },
+  { value: 'dueDate', label: 'Due Date' },
+  { value: 'createdAt', label: 'Created At' },
+] as const;
+
+type InvoiceFilterState = {
+  role: 'issuer' | 'debtor';
+  status: string;
+  subject: string;
+  minAmount: string;
+  maxAmount: string;
+  issueDateFrom: string;
+  issueDateTo: string;
+  dueDateFrom: string;
+  dueDateTo: string;
+  sortBy: (typeof INVOICE_SORT_FIELDS)[number]['value'];
+  sortOrder: 'asc' | 'desc';
+};
+
+const invoiceFilterInitialState = {
+  role: 'issuer',
+  status: '',
+  subject: '',
+  minAmount: '',
+  maxAmount: '',
+  issueDateFrom: '',
+  issueDateTo: '',
+  dueDateFrom: '',
+  dueDateTo: '',
+  sortBy: 'issueDate',
+  sortOrder: 'desc',
+} as const;
 
 type User = {
   id: number;
@@ -32,6 +67,14 @@ type Invoice = {
   invoicePdfUrl: string;
   createdAt: string;
   updatedAt: string;
+};
+
+type InvoiceWithPayment = Invoice & {
+  payment?: {
+    id: number;
+    paymentDate: string;
+    paymentMethod: string;
+  } | null;
 };
 
 type Payment = {
@@ -79,12 +122,56 @@ function Dashboard() {
   const [contactsPage, setContactsPage] = useState(1);
   const [contactsTotal, setContactsTotal] = useState(0);
   const [contactsLimit, setContactsLimit] = useState(10);
+  const [invoiceFilterForm, setInvoiceFilterForm] = useState<InvoiceFilterState>({ ...invoiceFilterInitialState });
+  const [invoiceFiltersApplied, setInvoiceFiltersApplied] = useState<InvoiceFilterState>({ ...invoiceFilterInitialState });
 
   const fetchData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/${selectedEntity}?limit=1000`, { credentials: 'include' });
+      let endpoint = `/api/${selectedEntity}?limit=1000`;
+
+      if (selectedEntity === 'invoices') {
+        const query = new URLSearchParams();
+        const filters = invoiceFiltersApplied;
+
+        query.set('limit', '1000');
+        query.set('role', filters.role);
+        query.set('sortBy', filters.sortBy);
+        query.set('sortOrder', filters.sortOrder);
+
+        if (filters.subject.trim()) {
+          query.set('subject', filters.subject.trim());
+        }
+
+        if (filters.status) {
+          query.set('status', filters.status);
+        }
+
+        if (filters.minAmount.trim()) {
+          query.set('minAmount', filters.minAmount.trim());
+        }
+
+        if (filters.maxAmount.trim()) {
+          query.set('maxAmount', filters.maxAmount.trim());
+        }
+
+        const toIso = (value: string) => (value ? new Date(value).toISOString() : null);
+
+        const issueFrom = toIso(filters.issueDateFrom);
+        const issueTo = toIso(filters.issueDateTo);
+        const dueFrom = toIso(filters.dueDateFrom);
+        const dueTo = toIso(filters.dueDateTo);
+
+        if (issueFrom) query.set('issueDateFrom', issueFrom);
+        if (issueTo) query.set('issueDateTo', issueTo);
+        if (dueFrom) query.set('dueDateFrom', dueFrom);
+        if (dueTo) query.set('dueDateTo', dueTo);
+
+        endpoint = `/api/invoices?${query.toString()}`;
+      }
+
+      const res = await fetch(endpoint, { credentials: 'include' });
       const body = await res.json();
       if (!res.ok) throw new Error(body?.message || 'Failed to fetch data');
       setData(body?.data ?? body);
@@ -95,9 +182,34 @@ function Dashboard() {
     }
   };
 
+  const handleInvoiceFilterChange = (field: keyof InvoiceFilterState) => (
+    event: ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
+    const { value } = event.target;
+    setInvoiceFilterForm((prev) => ({ ...prev, [field]: value } as InvoiceFilterState));
+  };
+
+  const handleInvoiceFiltersApply = () => {
+    setInvoiceFiltersApplied({ ...invoiceFilterForm });
+  };
+
+  const handleInvoiceFiltersReset = () => {
+    const resetState = { ...invoiceFilterInitialState };
+    setInvoiceFilterForm(resetState);
+    setInvoiceFiltersApplied(resetState);
+  };
+
+  const handleInvoiceSortOrderToggle = () => {
+    setInvoiceFilterForm((prev) => {
+      const nextOrder = prev.sortOrder === 'asc' ? 'desc' : 'asc';
+      setInvoiceFiltersApplied((applied) => ({ ...applied, sortOrder: nextOrder }));
+      return { ...prev, sortOrder: nextOrder };
+    });
+  };
+
   useEffect(() => {
     fetchData();
-  }, [selectedEntity]);
+  }, [selectedEntity, invoiceFiltersApplied]);
 
   const fetchUserDetails = async (userId: number, page: number = 1) => {
     try {
@@ -139,14 +251,36 @@ function Dashboard() {
     }
   };
 
-  const handleViewUser = (user: Entity) => {
-    // when viewing a user, prefer the server canonical GET /api/users/[id]
-    if (selectedEntity === 'users') {
-      fetchUserDetails((user as User).id);
-    } else {
-      setViewModal(user);
+  const fetchInvoiceDetails = async (invoiceId: number) => {
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}`, { credentials: 'include' });
+      if (!res.ok) {
+        throw new Error('Failed to load invoice details');
+      }
+      const detail = await res.json();
+      setViewModal(detail);
+    } catch (err) {
+      console.error('Error fetching invoice details:', err);
+      alert('Unable to load invoice details');
     }
   };
+
+  const handleViewItem = (item: Entity) => {
+    if (selectedEntity === 'users') {
+      fetchUserDetails((item as User).id);
+      return;
+    }
+
+    if (selectedEntity === 'invoices') {
+      fetchInvoiceDetails((item as Invoice).id);
+      return;
+    }
+
+    setViewModal(item);
+  };
+
+  const invoiceDetail = selectedEntity === 'invoices' && viewModal ? (viewModal as InvoiceWithPayment) : null;
+  const invoicePayment = invoiceDetail?.payment ?? null;
 
   const handleEdit = (item: Entity) => {
     setEditModal(item);
@@ -301,7 +435,7 @@ function Dashboard() {
     const baseActions = (
       <div className="flex gap-2">
         <button
-          onClick={() => handleViewUser(item)}
+          onClick={() => handleViewItem(item)}
           className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
         >
           View
@@ -470,6 +604,159 @@ function Dashboard() {
           + Create New
         </button>
       </div>
+
+      {selectedEntity === 'invoices' && (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleInvoiceFiltersApply();
+          }}
+          className="mb-6 grid gap-4 rounded-md border border-gray-200 p-4"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+              <span>Role</span>
+              <select
+                value={invoiceFilterForm.role}
+                onChange={handleInvoiceFilterChange('role')}
+                className="rounded border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none"
+              >
+                <option value="issuer">Issued by me</option>
+                <option value="debtor">Assigned to me</option>
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+              <span>Status</span>
+              <select
+                value={invoiceFilterForm.status}
+                onChange={handleInvoiceFilterChange('status')}
+                className="rounded border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none"
+              >
+                <option value="">All statuses</option>
+                {INVOICE_STATUS_OPTIONS.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+              <span>Subject</span>
+              <input
+                type="text"
+                value={invoiceFilterForm.subject}
+                onChange={handleInvoiceFilterChange('subject')}
+                placeholder="Search subject"
+                className="rounded border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+              <span>Min Amount</span>
+              <input
+                type="number"
+                step="0.01"
+                value={invoiceFilterForm.minAmount}
+                onChange={handleInvoiceFilterChange('minAmount')}
+                placeholder="0.00"
+                className="rounded border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+              <span>Max Amount</span>
+              <input
+                type="number"
+                step="0.01"
+                value={invoiceFilterForm.maxAmount}
+                onChange={handleInvoiceFilterChange('maxAmount')}
+                placeholder="1000.00"
+                className="rounded border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+              <span>Issue Date From</span>
+              <input
+                type="date"
+                value={invoiceFilterForm.issueDateFrom}
+                onChange={handleInvoiceFilterChange('issueDateFrom')}
+                className="rounded border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+              <span>Issue Date To</span>
+              <input
+                type="date"
+                value={invoiceFilterForm.issueDateTo}
+                onChange={handleInvoiceFilterChange('issueDateTo')}
+                className="rounded border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+              <span>Due Date From</span>
+              <input
+                type="date"
+                value={invoiceFilterForm.dueDateFrom}
+                onChange={handleInvoiceFilterChange('dueDateFrom')}
+                className="rounded border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+              <span>Due Date To</span>
+              <input
+                type="date"
+                value={invoiceFilterForm.dueDateTo}
+                onChange={handleInvoiceFilterChange('dueDateTo')}
+                className="rounded border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+              <span>Sort By</span>
+              <select
+                value={invoiceFilterForm.sortBy}
+                onChange={handleInvoiceFilterChange('sortBy')}
+                className="rounded border border-gray-300 px-3 py-2 text-sm focus:border-green-500 focus:outline-none"
+              >
+                {INVOICE_SORT_FIELDS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="submit"
+              className="rounded bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
+            >
+              Apply Filters
+            </button>
+            <button
+              type="button"
+              onClick={handleInvoiceFiltersReset}
+              className="rounded bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-300"
+            >
+              Reset
+            </button>
+            <button
+              type="button"
+              onClick={handleInvoiceSortOrderToggle}
+              className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              Sort Order: {invoiceFilterForm.sortOrder.toUpperCase()}
+            </button>
+          </div>
+        </form>
+      )}
 
       {/* Loading/Error */}
       {loading && <p className="text-gray-600">Loading...</p>}
@@ -670,6 +957,28 @@ function Dashboard() {
                   )}
                 </div>
               </>
+            )}
+
+            {selectedEntity === 'invoices' && invoiceDetail && (
+              <div className="mb-6">
+                <h3 className="mb-3 text-lg font-semibold text-green-700">Payment Information</h3>
+                {invoicePayment ? (
+                  <div className="rounded border border-gray-200 bg-gray-50 p-4 text-sm">
+                    <p className="mb-1">
+                      <span className="font-medium">Payment ID:</span> {invoicePayment.id}
+                    </p>
+                    <p className="mb-1">
+                      <span className="font-medium">Payment Date:</span>{' '}
+                      {new Date(invoicePayment.paymentDate).toLocaleString()}
+                    </p>
+                    <p>
+                      <span className="font-medium">Method:</span> {invoicePayment.paymentMethod}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">This invoice does not have a payment recorded yet.</p>
+                )}
+              </div>
             )}
 
             <button
