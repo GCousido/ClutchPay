@@ -68,7 +68,7 @@ async function main() {
   const userDatas = await Promise.all(
     Array.from({ length: 40 }).map(async (_, i) => ({
       email: `user${i + 1}@example.com`,
-      password: await bcrypt.hash(`password${i}`, 10),
+      password: await bcrypt.hash(`password${i}!`, 10),
       name: `FirstName${i + 1}`,
       surnames: `LastName${i + 1} Surname${i + 1}`,
       phone: randomEuropeanPhone(),

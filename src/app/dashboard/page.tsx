@@ -76,6 +76,9 @@ function Dashboard() {
   const [userNotifications, setUserNotifications] = useState<Notification[]>([]);
   const [showAddContact, setShowAddContact] = useState(false);
   const [newContactId, setNewContactId] = useState('');
+  const [contactsPage, setContactsPage] = useState(1);
+  const [contactsTotal, setContactsTotal] = useState(0);
+  const [contactsLimit, setContactsLimit] = useState(10);
 
   const fetchData = async () => {
     setLoading(true);
@@ -96,13 +99,33 @@ function Dashboard() {
     fetchData();
   }, [selectedEntity]);
 
-  const fetchUserDetails = async (userId: number) => {
+  const fetchUserDetails = async (userId: number, page: number = 1) => {
     try {
-      // Fetch contacts
-      const contactsRes = await fetch(`/api/users/${userId}/contacts`, { credentials: 'include' });
+      // Fetch user profile from your GET /api/users/[id] endpoint (use server canonical source)
+      const profileRes = await fetch(`/api/users/${userId}`, { credentials: 'include' });
+      if (profileRes.ok) {
+        const profile = await profileRes.json();
+        setViewModal(profile);
+      } else {
+        // fallback: log and keep previous viewModal if any
+        console.warn('Failed to fetch user profile:', await profileRes.text());
+      }
+
+      // Fetch contacts with pagination
+      const contactsRes = await fetch(
+        `/api/users/${userId}/contacts?page=${page}&limit=${contactsLimit}`,
+        { credentials: 'include' }
+      );
       if (contactsRes.ok) {
         const contactsData = await contactsRes.json();
         setUserContacts(contactsData?.data ?? contactsData);
+        if (contactsData?.meta) {
+          setContactsTotal(contactsData.meta.total);
+          setContactsPage(page);
+        } else {
+          setContactsTotal((contactsData?.data ?? contactsData).length ?? 0);
+          setContactsPage(1);
+        }
       }
 
       // Fetch user notifications
@@ -117,9 +140,11 @@ function Dashboard() {
   };
 
   const handleViewUser = (user: Entity) => {
-    setViewModal(user);
+    // when viewing a user, prefer the server canonical GET /api/users/[id]
     if (selectedEntity === 'users') {
       fetchUserDetails((user as User).id);
+    } else {
+      setViewModal(user);
     }
   };
 
@@ -167,18 +192,36 @@ function Dashboard() {
 
   const handleCreateSubmit = async () => {
     try {
-      const res = await fetch(`/api/${selectedEntity}`, {
+      const endpoint =
+        selectedEntity === 'users' ? '/api/auth/register' : `/api/${selectedEntity}`;
+
+      // If creating a user, avoid sending empty-string optional fields
+      const payload =
+        selectedEntity === 'users'
+          ? Object.fromEntries(
+              Object.entries(createFormData).filter(
+                ([, v]) => !(typeof v === 'string' && v.trim() === '')
+              )
+            )
+          : createFormData;
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(createFormData),
+        body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error('Failed to create');
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.message || 'Failed to create');
+      }
+
       setCreateModal(false);
       setCreateFormData({});
       fetchData();
     } catch (err: any) {
-      alert(err.message);
+      alert(err.message || 'Failed to create');
     }
   };
 
@@ -484,7 +527,7 @@ function Dashboard() {
                 {/* Contacts Section */}
                 <div className="mb-6">
                   <div className="flex justify-between items-center mb-3">
-                    <h3 className="font-semibold text-lg text-green-700">Contacts ({userContacts.length})</h3>
+                    <h3 className="font-semibold text-lg text-green-700">Contacts ({contactsTotal})</h3>
                     <button
                       onClick={() => setShowAddContact(!showAddContact)}
                       className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
@@ -525,28 +568,53 @@ function Dashboard() {
                   {userContacts.length === 0 ? (
                     <p className="text-gray-500 text-sm">No contacts yet.</p>
                   ) : (
-                    <div className="border border-gray-300 rounded overflow-hidden">
-                      <table className="min-w-full">
-                        <thead className="bg-green-50">
-                          <tr>
-                            <th className="px-4 py-2 text-left text-sm font-semibold">ID</th>
-                            <th className="px-4 py-2 text-left text-sm font-semibold">Name</th>
-                            <th className="px-4 py-2 text-left text-sm font-semibold">Email</th>
-                            <th className="px-4 py-2 text-left text-sm font-semibold">Phone</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {userContacts.map((contact) => (
-                            <tr key={contact.id} className="border-t">
-                              <td className="px-4 py-2 text-sm">{contact.id}</td>
-                              <td className="px-4 py-2 text-sm">{contact.name} {contact.surnames}</td>
-                              <td className="px-4 py-2 text-sm">{contact.email}</td>
-                              <td className="px-4 py-2 text-sm">{contact.phone ?? '—'}</td>
+                    <>
+                      <div className="border border-gray-300 rounded overflow-hidden mb-3">
+                        <table className="min-w-full">
+                          <thead className="bg-green-50">
+                            <tr>
+                              <th className="px-4 py-2 text-left text-sm font-semibold">ID</th>
+                              <th className="px-4 py-2 text-left text-sm font-semibold">Name</th>
+                              <th className="px-4 py-2 text-left text-sm font-semibold">Email</th>
+                              <th className="px-4 py-2 text-left text-sm font-semibold">Phone</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                          </thead>
+                          <tbody>
+                            {userContacts.map((contact) => (
+                              <tr key={contact.id} className="border-t">
+                                <td className="px-4 py-2 text-sm">{contact.id}</td>
+                                <td className="px-4 py-2 text-sm">{contact.name} {contact.surnames}</td>
+                                <td className="px-4 py-2 text-sm">{contact.email}</td>
+                                <td className="px-4 py-2 text-sm">{contact.phone ?? '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Contacts Pagination */}
+                      {contactsTotal > contactsLimit && (
+                        <div className="flex justify-center gap-2 mb-6">
+                          <button
+                            onClick={() => fetchUserDetails((viewModal as User).id, contactsPage - 1)}
+                            disabled={contactsPage === 1}
+                            className="px-3 py-1 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                          >
+                            Previous
+                          </button>
+                          <span className="px-3 py-1 bg-gray-100 rounded text-sm">
+                            Page {contactsPage} of {Math.ceil(contactsTotal / contactsLimit)}
+                          </span>
+                          <button
+                            onClick={() => fetchUserDetails((viewModal as User).id, contactsPage + 1)}
+                            disabled={contactsPage >= Math.ceil(contactsTotal / contactsLimit)}
+                            className="px-3 py-1 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -611,6 +679,8 @@ function Dashboard() {
                 setUserNotifications([]);
                 setShowAddContact(false);
                 setNewContactId('');
+                setContactsPage(1);
+                setContactsTotal(0);
               }}
               className="mt-4 px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
             >
