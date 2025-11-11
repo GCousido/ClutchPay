@@ -2,7 +2,7 @@
 import { getPagination, handleError, requireAuth, validateBody } from '@/libs/api-helpers';
 import { db } from '@/libs/db';
 import { invoiceCreateSchema, invoiceListQuerySchema } from '@/libs/validations/invoice';
-import { Prisma } from '@prisma/client';
+import { NotificationType, Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
 
 export async function GET(request: Request) {
@@ -159,6 +159,15 @@ export async function POST(request: Request) {
 				updatedAt: true,
 			},
 		});
+
+        await db.notification.create({
+            data: {
+                userId: parsed.debtorUserId,
+                invoiceId: invoice.id,
+                type: NotificationType.INVOICE_ISSUED,
+                read: false,
+            }
+        });
 
 		return NextResponse.json(invoice, { status: 201 });
 	} catch (error) {
