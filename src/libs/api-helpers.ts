@@ -50,7 +50,7 @@ export function validateBody<T>(schema: ZodType<T>, body: unknown): T {
 
 export function getPagination(searchParams: URLSearchParams) {
   const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
-  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '10')));
+  const limit = Math.min(1000, Math.max(1, parseInt(searchParams.get('limit') || '10')));
   const skip = (page - 1) * limit;
   
   return { page, limit, skip };

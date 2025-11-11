@@ -1,14 +1,27 @@
-// app/api/users/me/route.ts - Perfil del usuario actual
-import { handleError, requireAuth } from '@/libs/api-helpers';
+// app/api/users/[id]/route.ts
+import { handleError, requireAuth, validateBody } from '@/libs/api-helpers';
 import { db } from '@/libs/db';
+import { userUpdateSchema } from '@/libs/validations';
 import { NextResponse } from 'next/server';
 
-export async function GET() {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const user = await requireAuth();
+    const sessionUser = await requireAuth();
+
+    const resolvedParams = await params;
+    const userId = Number(resolvedParams.id)
+
+    if (Number.isNaN(userId)) {
+      return NextResponse.json({ message: 'Invalid user id' }, { status: 400 });
+    }
+
+    // TODO: eliminar DEV_ALLOW_BYPASS al entregar
+    if (sessionUser.id !== userId && !(process.env.DEV_ALLOW_BYPASS === 'true')) {
+      return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
+    }
     
     const profile = await db.user.findUnique({
-      where: { id: user.id },
+      where: { id: userId },
       select: {
         id: true,
         email: true,
@@ -27,14 +40,30 @@ export async function GET() {
   }
 }
 
-export async function PUT(request: Request) {
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const user = await requireAuth();
+    const sessionUser = await requireAuth();
+
+    const resolvedParams = await params;
+    const userId = Number(resolvedParams.id);
+
+    if (Number.isNaN(userId)) {
+      return NextResponse.json({ message: 'Invalid user id' }, { status: 400 });
+    }
+
+    // TODO: eliminar DEV_ALLOW_BYPASS al entregar
+    if (sessionUser.id !== userId && !(process.env.DEV_ALLOW_BYPASS === 'true')) {
+      return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
+    }
+
     const body = await request.json();
     const validated = validateBody(userUpdateSchema, body);
-    
+
     const updated = await db.user.update({
-      where: { id: user.id },
+      where: { id: userId },
       data: validated,
     });
     
