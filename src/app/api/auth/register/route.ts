@@ -9,8 +9,6 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    console.log(body)
-
     // Validate with Zod
     const parsed = userCreateSchema.safeParse(body);
     if (!parsed.success) {
@@ -27,14 +25,14 @@ export async function POST(request: Request) {
 
     // Check if email already exists
     const existing = await db.user.findUnique({
-      where: { email: data.email},
+      where: { email: data.email },
     });
 
     if (existing) {
       return NextResponse.json(
         {
           message: "Email already exists",
-          errors: [{ field: "email", message: "Email already in use" }],
+          errors: { email: "Email already in use" },
         },
         { status: 400 }
       );
@@ -67,7 +65,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             message: "Email already exists",
-            errors: [{ field: "email", message: "Email already in use" }],
+            errors: { email: "Email already in use" },
           },
           { status: 400 }
         );
