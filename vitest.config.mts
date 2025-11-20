@@ -6,6 +6,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     setupFiles: ['./tests/setup.ts'],
+    fileParallelism: false, // Run test files sequentially to avoid database conflicts
     coverage: {
       provider: 'v8',
       reportsDirectory: './coverage',

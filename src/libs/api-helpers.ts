@@ -49,8 +49,11 @@ export function validateBody<T>(schema: ZodType<T>, body: unknown): T {
 }
 
 export function getPagination(searchParams: URLSearchParams) {
-  const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
-  const limit = Math.min(1000, Math.max(1, parseInt(searchParams.get('limit') || '10')));
+  const pageParam = parseInt(searchParams.get('page') || '1');
+  const limitParam = parseInt(searchParams.get('limit') || '10');
+  
+  const page = isNaN(pageParam) ? 1 : Math.max(1, pageParam);
+  const limit = isNaN(limitParam) ? 10 : Math.min(1000, Math.max(1, limitParam));
   const skip = (page - 1) * limit;
   
   return { page, limit, skip };
