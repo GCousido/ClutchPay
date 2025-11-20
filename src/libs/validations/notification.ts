@@ -1,20 +1,6 @@
 import { NotificationType } from '@prisma/client';
 import { z } from 'zod';
 
-// Schema to create a notification
-export const notificationCreateSchema = z.object({
-  userId: z
-    .number()
-    .int()
-    .positive('Invalid user ID'),
-  invoiceId: z
-    .number()
-    .int()
-    .positive('Invalid invoice ID'),
-  type: z.enum(NotificationType),
-  read: z.boolean().default(false),
-});
-
 // Schema to mark a notification as read/unread
 export const notificationMarkAsReadSchema = z.object({
   read: z.boolean(),
@@ -39,7 +25,6 @@ export const notificationFilterSchema = z.object({
 });
 
 // TypeScript types
-export type NotificationCreateInput = z.infer<typeof notificationCreateSchema>;
 export type NotificationMarkAsReadInput = z.infer<typeof notificationMarkAsReadSchema>;
 export type NotificationBulkMarkAsReadInput = z.infer<typeof notificationBulkMarkAsReadSchema>;
 export type NotificationFilterInput = z.infer<typeof notificationFilterSchema>;

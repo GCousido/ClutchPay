@@ -45,7 +45,6 @@ const passwordValidation = z
 // Schema for creating a user
 export const userCreateSchema = z.object({
   email: z
-    .string()
     .email('Invalid email')
     .toLowerCase()
     .trim(),
@@ -68,7 +67,6 @@ export const userCreateSchema = z.object({
     .optional()
     .nullable(),
   imageUrl: z
-    .string()
     .url('Invalid image URL')
     .optional()
     .nullable(),
@@ -77,7 +75,6 @@ export const userCreateSchema = z.object({
 // Schema for updating a user (all fields optional except validations)
 export const userUpdateSchema = z.object({
   email: z
-    .string()
     .email('Invalid email')
     .toLowerCase()
     .trim()
@@ -103,7 +100,6 @@ export const userUpdateSchema = z.object({
     .optional()
     .nullable(),
   imageUrl: z
-    .string()
     .url('Invalid image URL')
     .optional()
     .nullable(),
