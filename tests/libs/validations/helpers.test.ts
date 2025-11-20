@@ -26,7 +26,7 @@ describe('Validation Helpers', () => {
     });
 
     it('should use "body" as default field for empty path', () => {
-      const schema = z.string().email();
+      const schema = z.email();
       const result = schema.safeParse('invalid');
 
       if (!result.success) {
@@ -40,7 +40,7 @@ describe('Validation Helpers', () => {
     it('should join nested paths with dot notation', () => {
       const schema = z.object({
         user: z.object({
-          email: z.string().email(),
+          email: z.email(),
         }),
       });
 
