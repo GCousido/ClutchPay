@@ -253,13 +253,6 @@ FRONTEND_DIR=$(eval echo "$FRONTEND_DIR")  # Expand ~ and variables
 read -p "Enter the frontend server port (default: 80): " FRONTEND_PORT
 FRONTEND_PORT=${FRONTEND_PORT:-80}
 
-# Frontend deployment method
-echo "Select frontend deployment method:"
-echo "  1) Native Apache installation"
-echo "  2) Docker container"
-read -p "Enter your choice (1-2, default: 1): " FRONTEND_DEPLOY_METHOD
-FRONTEND_DEPLOY_METHOD=${FRONTEND_DEPLOY_METHOD:-1}
-
 # Backend URL for frontend
 read -p "Enter backend URL for frontend (default: http://localhost:$BACKEND_PORT): " BACKEND_URL
 BACKEND_URL=${BACKEND_URL:-"http://localhost:$BACKEND_PORT"}
@@ -281,11 +274,6 @@ echo -e "Database Name:      ${GREEN}$DB_NAME${NC}"
 echo -e "Database User:      ${GREEN}$DB_USER${NC}"
 echo -e "Frontend Directory: ${GREEN}$FRONTEND_DIR${NC}"
 echo -e "Frontend Port:      ${GREEN}$FRONTEND_PORT${NC}"
-if [ "$FRONTEND_DEPLOY_METHOD" = "1" ]; then
-    echo -e "Frontend Deploy:    ${GREEN}Native Apache${NC}"
-else
-    echo -e "Frontend Deploy:    ${GREEN}Docker Container${NC}"
-fi
 echo -e "Backend URL:        ${GREEN}$BACKEND_URL${NC}"
 echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
@@ -565,32 +553,25 @@ EOF
 
 log_success "Frontend .env file created"
 
-# Install and configure frontend based on user choice
-if [ "$FRONTEND_DEPLOY_METHOD" = "1" ]; then
-    ################################################################################
-    # Native Apache Installation
-    ################################################################################
-    log_info "Setting up frontend with Native Apache..."
-    
-    # Install Apache
-    log_info "Checking Apache installation..."
-    if ! command -v apache2 &> /dev/null; then
-        log_info "Installing Apache web server..."
-        sudo apt-get update 2>&1 | sed 's/^/  /'
-        sudo apt-get install -y apache2 2>&1 | sed 's/^/  /'
-        log_success "Apache installed"
-    else
-        log_success "Apache is already installed"
-    fi
+# Install Apache
+log_info "Checking Apache installation..."
+if ! command -v apache2 &> /dev/null; then
+    log_info "Installing Apache web server..."
+    sudo apt-get update 2>&1 | sed 's/^/  /'
+    sudo apt-get install -y apache2 2>&1 | sed 's/^/  /'
+    log_success "Apache installed"
+else
+    log_success "Apache is already installed"
+fi
 
-    APACHE_CMD="apache2"
-    APACHE_CONF_DIR="/etc/apache2/sites-available"
+APACHE_CMD="apache2"
+APACHE_CONF_DIR="/etc/apache2/sites-available"
 
-    # Create Apache virtual host configuration
-    log_info "Creating Apache virtual host configuration..."
-    APACHE_CONF_FILE="$APACHE_CONF_DIR/clutchpay.conf"
+# Create Apache virtual host configuration
+log_info "Creating Apache virtual host configuration..."
+APACHE_CONF_FILE="$APACHE_CONF_DIR/clutchpay.conf"
 
-    sudo tee "$APACHE_CONF_FILE" > /dev/null << EOF
+sudo tee "$APACHE_CONF_FILE" > /dev/null << EOF
 <VirtualHost *:${FRONTEND_PORT}>
     ServerName localhost
     DocumentRoot ${FRONTEND_DIR}/public
@@ -618,168 +599,20 @@ if [ "$FRONTEND_DEPLOY_METHOD" = "1" ]; then
 </VirtualHost>
 EOF
 
-    log_success "Apache virtual host created"
+log_success "Apache virtual host created"
 
-    # Enable required Apache modules
-    log_info "Enabling required Apache modules..."
-    sudo a2enmod rewrite proxy proxy_http 2>&1 | sed 's/^/  /'
-    sudo a2ensite clutchpay.conf 2>&1 | sed 's/^/  /'
+# Enable required Apache modules
+log_info "Enabling required Apache modules..."
+sudo a2enmod rewrite proxy proxy_http 2>&1 | sed 's/^/  /'
+sudo a2ensite clutchpay.conf 2>&1 | sed 's/^/  /'
 
-    # Update Apache port if not 80
-    if [ "$FRONTEND_PORT" != "80" ]; then
-        sudo sed -i "s/Listen 80/Listen $FRONTEND_PORT/g" /etc/apache2/ports.conf 2>/dev/null || true
-    fi
-
-    sudo systemctl restart apache2 2>&1 | sed 's/^/  /'
-    log_success "Apache configured and restarted"
-
-else
-    ################################################################################
-    # Docker Apache Installation
-    ################################################################################
-    log_info "Setting up frontend with Docker..."
-    
-    # Create Dockerfile for Apache
-    log_info "Creating Dockerfile for frontend..."
-    cat > "$FRONTEND_DIR/Dockerfile" << 'EOF'
-FROM httpd:2.4-alpine
-
-# Install necessary modules
-RUN apk add --no-cache apache2-proxy
-
-# Copy frontend files
-COPY public/ /usr/local/apache2/htdocs/
-
-# Copy custom Apache configuration
-COPY apache.conf /usr/local/apache2/conf/httpd.conf
-
-EXPOSE 80
-
-CMD ["httpd-foreground"]
-EOF
-
-    # Create Apache configuration for Docker
-    log_info "Creating Apache configuration for Docker..."
-    cat > "$FRONTEND_DIR/apache.conf" << EOF
-ServerRoot "/usr/local/apache2"
-Listen 80
-
-LoadModule mpm_event_module modules/mod_mpm_event.so
-LoadModule authn_file_module modules/mod_authn_file.so
-LoadModule authn_core_module modules/mod_authn_core.so
-LoadModule authz_host_module modules/mod_authz_host.so
-LoadModule authz_groupfile_module modules/mod_authz_groupfile.so
-LoadModule authz_user_module modules/mod_authz_user.so
-LoadModule authz_core_module modules/mod_authz_core.so
-LoadModule access_compat_module modules/mod_access_compat.so
-LoadModule auth_basic_module modules/mod_auth_basic.so
-LoadModule reqtimeout_module modules/mod_reqtimeout.so
-LoadModule filter_module modules/mod_filter.so
-LoadModule mime_module modules/mod_mime.so
-LoadModule log_config_module modules/mod_log_config.so
-LoadModule env_module modules/mod_env.so
-LoadModule headers_module modules/mod_headers.so
-LoadModule setenvif_module modules/mod_setenvif.so
-LoadModule version_module modules/mod_version.so
-LoadModule unixd_module modules/mod_unixd.so
-LoadModule status_module modules/mod_status.so
-LoadModule autoindex_module modules/mod_autoindex.so
-LoadModule dir_module modules/mod_dir.so
-LoadModule alias_module modules/mod_alias.so
-LoadModule rewrite_module modules/mod_rewrite.so
-LoadModule proxy_module modules/mod_proxy.so
-LoadModule proxy_http_module modules/mod_proxy_http.so
-
-<IfModule unixd_module>
-    User daemon
-    Group daemon
-</IfModule>
-
-ServerAdmin admin@localhost
-ServerName localhost
-
-<Directory />
-    AllowOverride none
-    Require all denied
-</Directory>
-
-DocumentRoot "/usr/local/apache2/htdocs"
-<Directory "/usr/local/apache2/htdocs">
-    Options Indexes FollowSymLinks
-    AllowOverride All
-    Require all granted
-    
-    # Enable mod_rewrite for SPA routing
-    RewriteEngine On
-    RewriteBase /
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteRule . /index.html [L]
-</Directory>
-
-# Proxy API requests to backend
-ProxyPreserveHost On
-ProxyPass /api ${BACKEND_URL}/api
-ProxyPassReverse /api ${BACKEND_URL}/api
-
-<IfModule dir_module>
-    DirectoryIndex index.html
-</IfModule>
-
-<Files ".ht*">
-    Require all denied
-</Files>
-
-ErrorLog /proc/self/fd/2
-LogLevel warn
-
-<IfModule log_config_module>
-    LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined
-    LogFormat "%h %l %u %t \"%r\" %>s %b" common
-    CustomLog /proc/self/fd/1 common
-</IfModule>
-
-<IfModule mime_module>
-    TypesConfig conf/mime.types
-    AddType application/x-compress .Z
-    AddType application/x-gzip .gz .tgz
-    AddType text/html .shtml
-    AddOutputFilter INCLUDES .shtml
-</IfModule>
-EOF
-
-    # Create docker-compose.yml for frontend
-    log_info "Creating docker-compose.yml for frontend..."
-    cat > "$FRONTEND_DIR/docker-compose.yml" << EOF
-version: '3.8'
-
-services:
-  apache:
-    build: .
-    container_name: clutchpay_frontend
-    restart: unless-stopped
-    ports:
-      - "${FRONTEND_PORT}:80"
-    volumes:
-      - ./public:/usr/local/apache2/htdocs
-    networks:
-      - clutchpay_network
-
-networks:
-  clutchpay_network:
-    driver: bridge
-EOF
-
-    log_success "Docker configuration files created"
-
-    # Build and start frontend container
-    log_info "Building and starting frontend container..."
-    cd "$FRONTEND_DIR"
-    docker-compose up -d --build 2>&1 | sed 's/^/  /'
-    log_success "Frontend container started"
-    
-    cd "$BACKEND_DIR"
+# Update Apache port if not 80
+if [ "$FRONTEND_PORT" != "80" ]; then
+    sudo sed -i "s/Listen 80/Listen $FRONTEND_PORT/g" /etc/apache2/ports.conf 2>/dev/null || true
 fi
+
+sudo systemctl restart apache2 2>&1 | sed 's/^/  /'
+log_success "Apache configured and restarted"
 
 ################################################################################
 # Create systemd service for backend (optional)
@@ -876,18 +709,9 @@ echo -e "   pnpm prisma migrate dev     # Create new migration"
 echo -e "   pnpm prisma generate        # Regenerate Prisma Client"
 echo -e ""
 echo -e "   ${YELLOW}# Apache Commands${NC}"
-if [ "$FRONTEND_DEPLOY_METHOD" = "1" ]; then
-    echo -e "   sudo systemctl restart apache2     # Restart Apache"
-    echo -e "   sudo systemctl stop apache2        # Stop Apache"
-    echo -e "   sudo systemctl status apache2      # Check Apache status"
-    echo -e "   sudo tail -f /var/log/apache2/clutchpay_error.log  # View errors"
-else
-    echo -e "   cd $FRONTEND_DIR"
-    echo -e "   docker-compose up -d      # Start frontend"
-    echo -e "   docker-compose down       # Stop frontend"
-    echo -e "   docker-compose logs -f    # View logs"
-    echo -e "   docker-compose restart    # Restart frontend"
-fi
+echo -e "   sudo systemctl restart apache2     # Restart Apache"
+echo -e "   sudo systemctl status apache2      # Check Apache status"
+echo -e "   sudo tail -f /var/log/apache2/clutchpay_error.log  # View errors"
 echo -e ""
 
 if [[ $CREATE_SERVICE =~ ^[Yy]$ ]]; then
