@@ -23,6 +23,7 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         // Validate credentials
         if (!credentials?.email || !credentials?.password) {
+          console.log('Missing email or password in credentials');
           return null;
         }
 
@@ -43,6 +44,7 @@ export const authOptions: NextAuthOptions = {
 
         // Verify user exists
         if (!user) {
+          console.log('User not found with email:', credentials.email);
           return null;
         }
 
@@ -53,6 +55,7 @@ export const authOptions: NextAuthOptions = {
         );
 
         if (!isPasswordValid) {
+          console.log('Invalid password for email:', credentials.email);
           return null;
         }
 

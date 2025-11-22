@@ -8,28 +8,51 @@ class Auth {
     }
 
     async login(email, password) {
+        
+        // Llamar al endpoint de NextAuth para credentials
+        // Primero obtenemos el CSRF token
+        const csrfRes = await fetch(`${this.API_BASE_URL}/api/auth/csrf`, {
+            credentials: 'include'
+        });
+        const { csrfToken } = await csrfRes.json();
+        
+        // Ahora hacemos el login con el CSRF token
         const response = await fetch(`${this.API_BASE_URL}/api/auth/callback/credentials`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ email, password }),
-            credentials: 'include',
-            redirect: 'manual' // Don't follow redirects automatically
+            headers: { 
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+                csrfToken,
+                email,
+                password,
+                callbackUrl: `${this.API_BASE_URL}/api/auth/session`,
+                json: 'true'
+            }),
+            credentials: 'include'
         });
 
-        // NextAuth returns 302 redirect on success, 401 on failure
-        if (response.status === 0 || response.type === 'opaqueredirect') {
-            // Redirect means success (302)
-            return { ok: true };
+        // Intentar parsear la respuesta como JSON
+        const result = await response.json();
+
+        // Si hay error en la respuesta
+        if (result.error) {
+            return { ok: false, error: 'Credenciales incorrectas' };
         }
 
-        // Check if we got a JSON error response
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-            const data = await response.json();
-            return { ok: false, error: data.error || 'Credenciales incorrectas' };
+        // Si la respuesta indica éxito (tiene url de callback)
+        if (result.url || response.ok) {
+            // Verificar la sesión para confirmar
+            await new Promise(resolve => setTimeout(resolve, 100));
+            const session = await this.checkSession();
+            if (session) {
+                return { ok: true };
+            } else {
+                return { ok: false, error: 'Credenciales incorrectas' };
+            }
         }
 
-        // If not redirect and not JSON, it's an error
+        // Si llegamos aquí, el login falló
         return { ok: false, error: 'Credenciales incorrectas' };
     }
 
@@ -62,6 +85,7 @@ class Auth {
 
     //check session method
     async checkSession() {
+        
         // Call to check session endpoint
         const res = await fetch(`${this.API_BASE_URL}/api/auth/session`, {
             method: 'GET',
@@ -72,7 +96,9 @@ class Auth {
         // If session is valid, return user data
         if (res.ok) {
             const session = await res.json();
+            
             this.currentUser = (session && session.user) ? session.user : null;
+            
             return this.currentUser;
         } else {
             // If session is invalid, clear current user
@@ -83,14 +109,33 @@ class Auth {
 
     //logout method
     async logout() {
-        // Call to signout endpoint
-        await fetch(`${this.API_BASE_URL}/api/auth/signout`, {
-            method: 'POST',
-            //Include cookies in the request
-            credentials: 'include',
-        });
-        // Clear current user and redirect to homepage
-        this.currentUser = null;
-        window.location.href = '/index.html';
+        try {
+            // Obtener CSRF token para el logout
+            const csrfRes = await fetch(`${this.API_BASE_URL}/api/auth/csrf`, {
+                credentials: 'include'
+            });
+            const { csrfToken } = await csrfRes.json();
+            
+            // Hacer logout con el CSRF token
+            const response = await fetch(`${this.API_BASE_URL}/api/auth/signout`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ 
+                    csrfToken,
+                    callbackUrl: 'http://localhost:5050/index.html' 
+                }),
+                credentials: 'include',
+            });
+            
+            // Clear current user
+            this.currentUser = null;
+            
+            // Force redirect to clear any cached state
+            window.location.replace('/index.html');
+        } catch (error) {
+            console.error('Error during logout:', error);
+            // Force redirect anyway
+            window.location.replace('/index.html');
+        }
     }
 }
