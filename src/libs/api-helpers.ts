@@ -14,6 +14,14 @@ export async function requireAuth() {
   return session.user;
 }
 
+export function requireSameUser(sessionUserId: number, targetUserId: number) {
+  const isDevelopment = process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development';
+  
+  if (sessionUserId !== targetUserId && !isDevelopment) {
+    throw new Error('Forbidden');
+  }
+}
+
 export function handleError(error: unknown) {
   console.error(error);
   
@@ -29,6 +37,13 @@ export function handleError(error: unknown) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
+      );
+    }
+    
+    if (error.message === 'Forbidden') {
+      return NextResponse.json(
+        { message: 'Forbidden' },
+        { status: 403 }
       );
     }
     
