@@ -1,57 +1,57 @@
 {
-  "name": "clutchpay-temp",
-  "version": "0.1.0",
-  "pnpm": {
-    "overrides": {
-      "@prisma/client": "6.18.0",
-      "prisma": "6.18.0"
-    },
-    "ignoredBuiltDependencies": [
-      "puppeteer"
-    ]
-  },
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint",
-    "test": "cross-env NODE_ENV=test vitest",
-    "test:ui": "cross-env NODE_ENV=test vitest --ui",
-    "test:watch": "cross-env NODE_ENV=test vitest --watch",
-    "test:coverage": "cross-env NODE_ENV=test vitest --coverage",
-    "coverage:md": "node scripts/generate-coverage-report.js",
-    "coverage:pdf": "node scripts/coverage-md-to-pdf.mjs",
-    "coverage:all": "pnpm test:coverage --run && pnpm coverage:md && pnpm coverage:pdf"
-  },
-  "dependencies": {
-    "@prisma/client": "^6.18.0",
-    "bcryptjs": "^3.0.3",
-    "libphonenumber-js": "^1.12.25",
-    "next": "16.0.1",
-    "next-auth": "^4.24.13",
-    "react": "19.2.0",
-    "react-dom": "19.2.0",
-    "tsx": "^4.20.6",
-    "zod": "^4.1.12"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/bcrypt": "^6.0.0",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "@vitest/coverage-v8": "^4.0.11",
-    "@vitest/ui": "^4.0.11",
-    "c8": "^10.1.3",
-    "cross-env": "^10.1.0",
-    "eslint": "^9",
-    "eslint-config-next": "16.0.1",
-    "marked": "^17.0.0",
-    "prisma": "^6.18.0",
-    "puppeteer": "^24.30.0",
-    "tailwindcss": "^4",
-    "typescript": "^5",
-    "vitest": "^4.0.11"
-  }
+    "name":  "clutchpay-temp",
+    "version":  "0.1.0",
+    "pnpm":  {
+                 "overrides":  {
+                                   "@prisma/client":  "6.18.0",
+                                   "prisma":  "6.18.0"
+                               },
+                 "ignoredBuiltDependencies":  [
+                                                  "puppeteer"
+                                              ]
+             },
+    "private":  true,
+    "scripts":  {
+                    "dev":  "next dev -p 3000",
+                    "build":  "next build",
+                    "start":  "next start",
+                    "lint":  "eslint",
+                    "test":  "cross-env NODE_ENV=test vitest",
+                    "test:ui":  "cross-env NODE_ENV=test vitest --ui",
+                    "test:watch":  "cross-env NODE_ENV=test vitest --watch",
+                    "test:coverage":  "cross-env NODE_ENV=test vitest --coverage",
+                    "coverage:md":  "node scripts/generate-coverage-report.js",
+                    "coverage:pdf":  "node scripts/coverage-md-to-pdf.mjs",
+                    "coverage:all":  "pnpm test:coverage --run \u0026\u0026 pnpm coverage:md \u0026\u0026 pnpm coverage:pdf"
+                },
+    "dependencies":  {
+                         "@prisma/client":  "^6.18.0",
+                         "bcryptjs":  "^3.0.3",
+                         "libphonenumber-js":  "^1.12.25",
+                         "next":  "16.0.1",
+                         "next-auth":  "^4.24.13",
+                         "react":  "19.2.0",
+                         "react-dom":  "19.2.0",
+                         "tsx":  "^4.20.6",
+                         "zod":  "^4.1.12"
+                     },
+    "devDependencies":  {
+                            "@tailwindcss/postcss":  "^4",
+                            "@types/bcrypt":  "^6.0.0",
+                            "@types/node":  "^20",
+                            "@types/react":  "^19",
+                            "@types/react-dom":  "^19",
+                            "@vitest/coverage-v8":  "^4.0.11",
+                            "@vitest/ui":  "^4.0.11",
+                            "c8":  "^10.1.3",
+                            "cross-env":  "^10.1.0",
+                            "eslint":  "^9",
+                            "eslint-config-next":  "16.0.1",
+                            "marked":  "^17.0.0",
+                            "prisma":  "^6.18.0",
+                            "puppeteer":  "^24.30.0",
+                            "tailwindcss":  "^4",
+                            "typescript":  "^5",
+                            "vitest":  "^4.0.11"
+                        }
 }
