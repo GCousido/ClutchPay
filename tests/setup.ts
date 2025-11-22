@@ -2,9 +2,9 @@ import { afterAll, beforeAll, vi } from 'vitest';
 import { db } from '../src/libs/db';
 
 // Set test environment
+// @ts-expect-error - Restoring original NODE_ENV
 process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
-process.env.DEV_ALLOW_BYPASS = 'true'; // Allow bypassing auth checks in tests
 
 // Mock NextAuth getServerSession with global context
 let mockSession: any = null;
