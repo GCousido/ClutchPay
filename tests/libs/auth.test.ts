@@ -42,57 +42,51 @@ describe('NextAuth Configuration - auth.ts', () => {
       return provider.options.authorize;
     };
 
-    it('should throw error when email is missing', async () => {
+    it('should return null when email is missing', async () => {
       const authorize = getAuthorize();
       
-      await expect(
-        authorize({ password: 'test123' }, {} as any)
-      ).rejects.toThrow('Email and Password required');
+      const result = await authorize({ password: 'test123' }, {} as any);
+      expect(result).toBeNull();
     });
 
-    it('should throw error when password is missing', async () => {
+    it('should return null when password is missing', async () => {
       const authorize = getAuthorize();
       
-      await expect(
-        authorize({ email: 'test@example.com' }, {} as any)
-      ).rejects.toThrow('Email and Password required');
+      const result = await authorize({ email: 'test@example.com' }, {} as any);
+      expect(result).toBeNull();
     });
 
-    it('should throw error when both credentials are missing', async () => {
+    it('should return null when both credentials are missing', async () => {
       const authorize = getAuthorize();
       
-      await expect(
-        authorize({}, {} as any)
-      ).rejects.toThrow('Email and Password required');
+      const result = await authorize({}, {} as any);
+      expect(result).toBeNull();
     });
 
-    it('should throw error when email is empty string', async () => {
+    it('should return null when email is empty string', async () => {
       const authorize = getAuthorize();
       
-      await expect(
-        authorize({ email: '', password: 'test123' }, {} as any)
-      ).rejects.toThrow('Email and Password required');
+      const result = await authorize({ email: '', password: 'test123' }, {} as any);
+      expect(result).toBeNull();
     });
 
-    it('should throw error when password is empty string', async () => {
+    it('should return null when password is empty string', async () => {
       const authorize = getAuthorize();
       
-      await expect(
-        authorize({ email: 'test@example.com', password: '' }, {} as any)
-      ).rejects.toThrow('Email and Password required');
+      const result = await authorize({ email: 'test@example.com', password: '' }, {} as any);
+      expect(result).toBeNull();
     });
 
-    it('should throw error when user not found', async () => {
+    it('should return null when user not found', async () => {
       const authorize = getAuthorize();
       vi.mocked(db.user.findUnique).mockResolvedValue(null);
 
-      await expect(
-        authorize({
-          email: 'notfound@example.com',
-          password: 'test123',
-        }, {} as any)
-      ).rejects.toThrow('User not found');
+      const result = await authorize({
+        email: 'notfound@example.com',
+        password: 'test123',
+      }, {} as any);
 
+      expect(result).toBeNull();
       expect(db.user.findUnique).toHaveBeenCalledWith({
         where: { email: 'notfound@example.com' },
         select: {
@@ -108,18 +102,17 @@ describe('NextAuth Configuration - auth.ts', () => {
       });
     });
 
-    it('should throw error when password is invalid', async () => {
+    it('should return null when password is invalid', async () => {
       const authorize = getAuthorize();
       vi.mocked(db.user.findUnique).mockResolvedValue(mockUser);
       vi.mocked(bcrypt.compare).mockResolvedValue(false as never);
 
-      await expect(
-        authorize({
-          email: 'test@example.com',
-          password: 'wrongpassword',
-        }, {} as any)
-      ).rejects.toThrow('Invalid password');
+      const result = await authorize({
+        email: 'test@example.com',
+        password: 'wrongpassword',
+      }, {} as any);
 
+      expect(result).toBeNull();
       expect(bcrypt.compare).toHaveBeenCalledWith(
         'wrongpassword',
         mockUser.password
@@ -445,17 +438,15 @@ describe('NextAuth Configuration - auth.ts', () => {
     it('should handle undefined credentials object', async () => {
       const authorize = getAuthorize();
       
-      await expect(
-        authorize(undefined, {} as any)
-      ).rejects.toThrow('Email and Password required');
+      const result = await authorize(undefined, {} as any);
+      expect(result).toBeNull();
     });
 
     it('should handle null credentials', async () => {
       const authorize = getAuthorize();
       
-      await expect(
-        authorize(null, {} as any)
-      ).rejects.toThrow('Email and Password required');
+      const result = await authorize(null, {} as any);
+      expect(result).toBeNull();
     });
 
 

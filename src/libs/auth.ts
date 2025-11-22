@@ -23,7 +23,7 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         // Validate credentials
         if (!credentials?.email || !credentials?.password) {
-          throw new Error('Email and Password required');
+          return null;
         }
 
         // Search user in the database by email
@@ -43,7 +43,7 @@ export const authOptions: NextAuthOptions = {
 
         // Verify user exists
         if (!user) {
-          throw new Error('User not found');
+          return null;
         }
 
         // Verify password
@@ -53,7 +53,7 @@ export const authOptions: NextAuthOptions = {
         );
 
         if (!isPasswordValid) {
-          throw new Error('Invalid password');
+          return null;
         }
 
         // Return User for session

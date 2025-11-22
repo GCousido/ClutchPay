@@ -56,49 +56,49 @@ describe('NextAuth Credentials Provider', () => {
   });
 
   describe('Failed authentication', () => {
-    it('should throw error when user not found', async () => {
-      await expect(
-        authorizeFn({
-          email: 'nonexistent@example.com',
-          password: testPassword,
-        })
-      ).rejects.toThrow();
+    it('should return null when user not found', async () => {
+      const result = await authorizeFn({
+        email: 'nonexistent@example.com',
+        password: testPassword,
+      });
+
+      expect(result).toBeNull();
     });
 
-    it('should throw error when password is incorrect', async () => {
-      await expect(
-        authorizeFn({
-          email: 'authtest@example.com',
-          password: 'WrongPassword123!',
-        })
-      ).rejects.toThrow();
+    it('should return null when password is incorrect', async () => {
+      const result = await authorizeFn({
+        email: 'authtest@example.com',
+        password: 'WrongPassword123!',
+      });
+
+      expect(result).toBeNull();
     });
 
-    it('should throw error when email is missing', async () => {
-      await expect(
-        authorizeFn({
-          email: '',
-          password: testPassword,
-        })
-      ).rejects.toThrow();
+    it('should return null when email is missing', async () => {
+      const result = await authorizeFn({
+        email: '',
+        password: testPassword,
+      });
+
+      expect(result).toBeNull();
     });
 
-    it('should throw error when password is missing', async () => {
-      await expect(
-        authorizeFn({
-          email: 'authtest@example.com',
-          password: '',
-        })
-      ).rejects.toThrow();
+    it('should return null when password is missing', async () => {
+      const result = await authorizeFn({
+        email: 'authtest@example.com',
+        password: '',
+      });
+
+      expect(result).toBeNull();
     });
 
-    it('should throw error when both credentials are missing', async () => {
-      await expect(
-        authorizeFn({
-          email: '',
-          password: '',
-        })
-      ).rejects.toThrow();
+    it('should return null when both credentials are missing', async () => {
+      const result = await authorizeFn({
+        email: '',
+        password: '',
+      });
+
+      expect(result).toBeNull();
     });
   });
 });
