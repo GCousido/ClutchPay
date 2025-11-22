@@ -72,7 +72,6 @@ export const invoiceCreateSchema = z
       .optional()
       .nullable(),
     invoicePdfUrl: z
-      .string()
       .url('Invalid PDF URL')
       .endsWith('.pdf', 'File must be a PDF'),
   })
@@ -117,7 +116,6 @@ export const invoiceUpdateSchema = z
       .optional()
       .nullable(),
     invoicePdfUrl: z
-      .string()
       .url('Invalid PDF URL')
       .endsWith('.pdf', 'File must be a PDF')
       .optional(),
@@ -152,7 +150,7 @@ export const invoiceListQuerySchema = z
     status: z
       .preprocess(
         (val) => (typeof val === 'string' && val.trim() ? val.toUpperCase() : undefined),
-        z.nativeEnum(InvoiceStatus)
+        z.enum(InvoiceStatus)
       )
       .optional(),
     subject: z
@@ -200,6 +198,7 @@ export const invoiceListQuerySchema = z
       maxAmount: safeMax,
     };
   })
+  // TODO: check ZodIssueCode
   .superRefine((data, ctx) => {
     if (data.minAmount !== undefined && data.maxAmount !== undefined && data.minAmount > data.maxAmount) {
       ctx.addIssue({

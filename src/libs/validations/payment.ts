@@ -32,7 +32,6 @@ export const paymentCreateSchema = z.object({
     .optional()
     .nullable(),
   receiptPdfUrl: z
-    .string()
     .url('Invalid receipt URL')
     .endsWith('.pdf', 'File must be a PDF'),
   subject: z
@@ -63,7 +62,6 @@ export const paymentUpdateSchema = z
       .optional()
       .nullable(),
     receiptPdfUrl: z
-      .string()
       .url('Invalid receipt URL')
       .endsWith('.pdf', 'File must be a PDF')
       .optional(),

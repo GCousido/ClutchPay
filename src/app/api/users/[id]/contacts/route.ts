@@ -115,6 +115,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: 'Contact user not found' }, { status: 404 });
     }
 
+    // Check if contact already exists
+    const existingRelation = await db.user.findFirst({
+      where: {
+        id: userId,
+        contacts: {
+          some: { id: contactId },
+        },
+      },
+    });
+    if (existingRelation) {
+      return NextResponse.json({ message: 'Contact already exists' }, { status: 400 });
+    }
+
     // Try to connect the contact (many-to-many)
     try {
       const updated = await db.user.update({
