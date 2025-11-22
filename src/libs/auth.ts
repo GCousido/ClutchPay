@@ -15,7 +15,7 @@ export const authOptions: NextAuthOptions = {
           placeholder: 'user@example.com',
         },
         password: { 
-          label: 'Password', 
+          label: 'Password',
           type: 'password',
           placeholder: '••••••••',
         },
@@ -23,7 +23,6 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         // Validate credentials
         if (!credentials?.email || !credentials?.password) {
-          // FIXME: Improve error handling
           throw new Error('Email and Password required');
         }
 
@@ -44,7 +43,6 @@ export const authOptions: NextAuthOptions = {
 
         // Verify user exists
         if (!user) {
-          // FIXME: Improve error handling
           throw new Error('User not found');
         }
 
@@ -55,7 +53,6 @@ export const authOptions: NextAuthOptions = {
         );
 
         if (!isPasswordValid) {
-          // FIXME: Improve error handling
           throw new Error('Invalid password');
         }
 
@@ -102,13 +99,11 @@ export const authOptions: NextAuthOptions = {
     },
   },
 
-  // TODO: check routes to match frontend and match URL params
   pages: {
     signIn: '/auth/login',
     error: '/auth/error',
   },
 
-  // TODO: check JWT
   // Session configuration
   session: {
     strategy: 'jwt',
