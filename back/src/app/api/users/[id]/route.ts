@@ -1,5 +1,5 @@
 // app/api/users/[id]/route.ts
-import { handleError, requireAuth, validateBody } from '@/libs/api-helpers';
+import { handleError, requireAuth, requireSameUser, validateBody } from '@/libs/api-helpers';
 import { db } from '@/libs/db';
 import { userUpdateSchema } from '@/libs/validations';
 import { NextResponse } from 'next/server';
@@ -15,10 +15,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       return NextResponse.json({ message: 'Invalid user id' }, { status: 400 });
     }
 
-    // TODO: eliminar DEV_ALLOW_BYPASS al entregar
-    if (sessionUser.id !== userId && !(process.env.DEV_ALLOW_BYPASS === 'true')) {
-      return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
-    }
+    requireSameUser(sessionUser.id, userId);
     
     const profile = await db.user.findUnique({
       where: { id: userId },
@@ -54,10 +51,7 @@ export async function PUT(
       return NextResponse.json({ message: 'Invalid user id' }, { status: 400 });
     }
 
-    // TODO: eliminar DEV_ALLOW_BYPASS al entregar
-    if (sessionUser.id !== userId && !(process.env.DEV_ALLOW_BYPASS === 'true')) {
-      return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
-    }
+    requireSameUser(sessionUser.id, userId);
 
     const body = await request.json();
     const validated = validateBody(userUpdateSchema, body);

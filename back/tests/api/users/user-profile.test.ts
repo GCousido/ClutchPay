@@ -59,14 +59,26 @@ describe('GET /api/users/[id]', () => {
         userId: testUser.id,
       });
 
-      const res = await GET(req, { params: Promise.resolve({ id: String(otherUser.id) }) });
-      
-      // With DEV_ALLOW_BYPASS=true, should return 200
-      if (process.env.DEV_ALLOW_BYPASS === 'true') {
-        expect(res.status).toBe(200);
-      } else {
-        expect(res.status).toBe(403);
-      }
+      // Test development behavior: cross-user access allowed
+      const resInDev = await GET(req, { params: Promise.resolve({ id: String(otherUser.id) }) });
+      expect(resInDev.status).toBe(200);
+
+      // Test production behavior: cross-user access forbidden
+      const originalEnv = process.env.NODE_ENV;
+      Object.defineProperty(process.env, 'NODE_ENV', { 
+        value: 'production', 
+        writable: true, 
+        configurable: true, 
+        enumerable: true 
+      });
+      const resInProd = await GET(req, { params: Promise.resolve({ id: String(otherUser.id) }) });
+      expect(resInProd.status).toBe(403);
+      Object.defineProperty(process.env, 'NODE_ENV', { 
+        value: originalEnv, 
+        writable: true, 
+        configurable: true, 
+        enumerable: true 
+      });
 
       await db.user.delete({ where: { id: otherUser.id } });
     });
