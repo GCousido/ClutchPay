@@ -1,6 +1,9 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  // Enable standalone output for production builds
+  // This allows packaging the server code separately for deployment
+  output: 'standalone',
   // API only configuration
   async headers() {
     return [

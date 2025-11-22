@@ -89,6 +89,14 @@ install_git() {
     log_success "Git installed successfully"
 }
 
+# Install curl
+install_curl() {
+    log_info "Installing curl..."
+    sudo apt-get update 2>&1 | sed 's/^/  /'
+    sudo apt-get install -y curl 2>&1 | sed 's/^/  /'
+    log_success "curl installed successfully"
+}
+
 # Install Docker
 install_docker() {
     log_info "Installing Docker..."
@@ -130,158 +138,59 @@ log_info "Checking required dependencies..."
 # Check Git
 if ! command -v git &> /dev/null; then
     log_warning "Git is not installed"
-    read -p "Do you want to install Git? (y/n): " INSTALL_GIT
-    if [[ $INSTALL_GIT =~ ^[Yy]$ ]]; then
-        install_git || exit 1
-    else
-        log_error "Git is required to proceed. Exiting."
-        exit 1
-    fi
+    install_git || exit 1
 else
     log_success "Git is installed ($(git --version))"
 fi
 
-# Check Docker
-if ! command -v docker &> /dev/null; then
-    log_warning "Docker is not installed"
-    read -p "Do you want to install Docker? (y/n): " INSTALL_DOCKER
-    if [[ $INSTALL_DOCKER =~ ^[Yy]$ ]]; then
-        install_docker || exit 1
-    else
-        log_error "Docker is required to proceed. Exiting."
-        exit 1
-    fi
+# Check curl
+if ! command -v curl &> /dev/null; then
+    log_warning "curl is not installed"
+    install_curl || exit 1
 else
-    log_success "Docker is installed ($(docker --version))"
-    
-# Check if Docker daemon is running
-    if ! docker info &> /dev/null; then
-        log_warning "Docker daemon is not running"
-        log_info "Starting Docker daemon..."
-        sudo systemctl start docker
-        sudo systemctl enable docker
-    fi
+    log_success "curl is installed ($(curl --version | head -n 1))"
 fi
 
-# Check Docker Compose
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-    log_info "Installing Docker Compose..."
-    
-    # Install Docker Compose standalone
-    COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep 'tag_name' | cut -d\" -f4)
-    sudo curl -L "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-    sudo chmod +x /usr/local/bin/docker-compose
-    log_success "Docker Compose installed successfully"
-else
-    if command -v docker-compose &> /dev/null; then
-        log_success "Docker Compose is installed ($(docker-compose --version))"
-    else
-        log_success "Docker Compose (v2) is installed ($(docker compose version))"
-    fi
-fi
+# PostgreSQL will be installed natively, no Docker required
+log_info "PostgreSQL will be installed natively"
 
 log_success "All prerequisites are met!"
 
 ################################################################################
-# Get user configuration
+# Configuration Setup
 ################################################################################
 log_header "Configuration Setup"
 
-# Backend directory
-echo -e "${CYAN}Backend Configuration:${NC}"
-read -p "Enter the installation directory for backend (default: $HOME/$BACKEND_FOLDER_NAME): " BACKEND_DIR
-BACKEND_DIR=${BACKEND_DIR:-"$HOME/$BACKEND_FOLDER_NAME"}
-BACKEND_DIR=$(eval echo "$BACKEND_DIR")  # Expand ~ and variables
-
-# Backend port
-read -p "Enter the backend server port (default: 3000): " BACKEND_PORT
-BACKEND_PORT=${BACKEND_PORT:-3000}
+# Fixed configuration values
+BACKEND_DIR="/opt/clutchpay/backend"
+BACKEND_PORT=3000
+FRONTEND_DIR="/var/www/clutchpay"
+FRONTEND_PORT=80
+BACKEND_URL="http://localhost:$BACKEND_PORT"
 
 # Database configuration
-echo -e "\n${CYAN}Database Configuration (PostgreSQL):${NC}"
 DB_TYPE="postgresql"
-DB_IMAGE="postgres:16-alpine"
-DB_PORT_DEFAULT=5432
+DB_PORT=5432
+DB_NAME="clutchpay"
+DB_USER="clutchpay_user"
+DB_PASSWORD="clutchpay_password"
 
-echo "Select PostgreSQL installation method:"
-echo "  1) Docker container (recommended)"
-echo "  2) Native PostgreSQL installation"
-read -p "Enter your choice (1-2, default: 1): " DB_INSTALL_METHOD
-DB_INSTALL_METHOD=${DB_INSTALL_METHOD:-1}
+# Security secrets (auto-generated)
+JWT_SECRET=$(openssl rand -base64 32 2>/dev/null || cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
+NEXTAUTH_SECRET=$(openssl rand -base64 32 2>/dev/null || cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
 
-read -p "Enter database port (default: $DB_PORT_DEFAULT): " DB_PORT
-DB_PORT=${DB_PORT:-$DB_PORT_DEFAULT}
-
-read -p "Enter database name (default: clutchpay): " DB_NAME
-DB_NAME=${DB_NAME:-clutchpay}
-
-read -p "Enter database user (default: clutchpay_user): " DB_USER
-DB_USER=${DB_USER:-clutchpay_user}
-
-read -sp "Enter database password (will be hidden): " DB_PASSWORD
-echo
-while [ -z "$DB_PASSWORD" ]; do
-    echo -e "${YELLOW}Password cannot be empty${NC}"
-    read -sp "Enter database password: " DB_PASSWORD
-    echo
-done
-
-# JWT Secret
-echo -e "\n${CYAN}Security Configuration:${NC}"
-read -sp "Enter JWT secret (leave empty to auto-generate): " JWT_SECRET
-echo
-if [ -z "$JWT_SECRET" ]; then
-    JWT_SECRET=$(openssl rand -base64 32 2>/dev/null || cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
-    log_info "Auto-generated JWT secret"
-fi
-
-# NextAuth Secret
-read -sp "Enter NextAuth secret (leave empty to auto-generate): " NEXTAUTH_SECRET
-echo
-if [ -z "$NEXTAUTH_SECRET" ]; then
-    NEXTAUTH_SECRET=$(openssl rand -base64 32 2>/dev/null || cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
-    log_info "Auto-generated NextAuth secret"
-fi
-
-# Frontend directory
-echo -e "\n${CYAN}Frontend Configuration:${NC}"
-read -p "Enter the installation directory for frontend (default: $HOME/$FRONTEND_FOLDER_NAME): " FRONTEND_DIR
-FRONTEND_DIR=${FRONTEND_DIR:-"$HOME/$FRONTEND_FOLDER_NAME"}
-FRONTEND_DIR=$(eval echo "$FRONTEND_DIR")  # Expand ~ and variables
-
-# Frontend port
-read -p "Enter the frontend server port (default: 80): " FRONTEND_PORT
-FRONTEND_PORT=${FRONTEND_PORT:-80}
-
-# Backend URL for frontend
-read -p "Enter backend URL for frontend (default: http://localhost:$BACKEND_PORT): " BACKEND_URL
-BACKEND_URL=${BACKEND_URL:-"http://localhost:$BACKEND_PORT"}
-
-# Confirmation
-echo -e "\n${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${YELLOW}Please review your configuration:${NC}"
-echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "Backend Directory:  ${GREEN}$BACKEND_DIR${NC}"
-echo -e "Backend Port:       ${GREEN}$BACKEND_PORT${NC}"
-echo -e "Database Type:      ${GREEN}$DB_TYPE${NC}"
-if [ "$DB_INSTALL_METHOD" = "1" ]; then
-    echo -e "Database Install:   ${GREEN}Docker Container${NC}"
-else
-    echo -e "Database Install:   ${GREEN}Native PostgreSQL${NC}"
-fi
-echo -e "Database Port:      ${GREEN}$DB_PORT${NC}"
-echo -e "Database Name:      ${GREEN}$DB_NAME${NC}"
-echo -e "Database User:      ${GREEN}$DB_USER${NC}"
-echo -e "Frontend Directory: ${GREEN}$FRONTEND_DIR${NC}"
-echo -e "Frontend Port:      ${GREEN}$FRONTEND_PORT${NC}"
-echo -e "Backend URL:        ${GREEN}$BACKEND_URL${NC}"
-echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-
-read -p "Proceed with installation? (y/n): " CONFIRM
-if [[ ! $CONFIRM =~ ^[Yy]$ ]]; then
-    log_warning "Installation cancelled by user."
-    exit 0
-fi
+# Display configuration
+log_info "Installation configuration:"
+echo -e "  Backend Directory:  ${GREEN}$BACKEND_DIR${NC}"
+echo -e "  Backend Port:       ${GREEN}$BACKEND_PORT${NC}"
+echo -e "  Database Type:      ${GREEN}PostgreSQL (Native)${NC}"
+echo -e "  Database Port:      ${GREEN}$DB_PORT${NC}"
+echo -e "  Database Name:      ${GREEN}$DB_NAME${NC}"
+echo -e "  Frontend Directory: ${GREEN}$FRONTEND_DIR${NC}"
+echo -e "  Frontend Port:      ${GREEN}$FRONTEND_PORT${NC}"
+echo -e ""
+log_info "Auto-generated secure passwords and secrets"
+log_info "Proceeding with installation..."
 
 ################################################################################
 # Clone repository
@@ -300,7 +209,8 @@ log_header "Installing Backend"
 
 # Create backend directory
 log_info "Creating backend directory: $BACKEND_DIR"
-mkdir -p "$BACKEND_DIR"
+sudo mkdir -p "$BACKEND_DIR"
+sudo chown $USER:$USER "$BACKEND_DIR"
 
 # Copy backend files
 log_info "Copying backend files..."
@@ -326,7 +236,6 @@ cat > "$BACKEND_DIR/.env" << EOF
 DATABASE_URL="${DATABASE_URL}"
 
 # Server Configuration
-PORT=${BACKEND_PORT}
 NODE_ENV=production
 NEXT_PUBLIC_API_URL=http://localhost:${BACKEND_PORT}
 
@@ -335,142 +244,73 @@ JWT_SECRET="${JWT_SECRET}"
 NEXTAUTH_SECRET="${NEXTAUTH_SECRET}"
 NEXTAUTH_URL=http://localhost:${BACKEND_PORT}
 
-# Session Configuration (30 days)
-SESSION_MAX_AGE=2592000
-SESSION_UPDATE_AGE=86400
-
-# Stripe Configuration (Optional - Add your keys)
-STRIPE_SECRET_KEY=
-STRIPE_WEBHOOK_SECRET=
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
-
-# PayPal Configuration (Optional - Add your keys)
-PAYPAL_CLIENT_ID=
-PAYPAL_CLIENT_SECRET=
-PAYPAL_MODE=sandbox
-
-# Email Configuration (Optional - Add your SMTP settings)
-EMAIL_HOST=
-EMAIL_PORT=587
-EMAIL_USER=
-EMAIL_PASSWORD=
-EMAIL_FROM=
-
-# CORS Configuration
-ALLOWED_ORIGINS=http://localhost:${FRONTEND_PORT}
-
-# Database container name (for Docker)
-DB_CONTAINER_NAME=clutchpay_db
+FRONTEND_URL=http://localhost:${FRONTEND_PORT}
 EOF
 
 log_success "Backend .env file created"
 
-# Install and configure PostgreSQL based on user choice
-if [ "$DB_INSTALL_METHOD" = "1" ]; then
-    ################################################################################
-    # Docker PostgreSQL Installation
-    ################################################################################
-    log_info "Setting up PostgreSQL with Docker..."
-    
-    # Create .env file for Docker Compose
-    log_info "Creating Docker .env file..."
-    cat > "$BACKEND_DIR/docker/.env" << EOF
-POSTGRES_USER=${DB_USER}
-POSTGRES_PASSWORD=${DB_PASSWORD}
-POSTGRES_DB=${DB_NAME}
-EOF
+################################################################################
+# Native PostgreSQL Installation
+################################################################################
+log_info "Installing PostgreSQL natively..."
 
-    log_success "Docker .env file created"
-
-    # Start database container using existing docker-compose.yml
-    log_info "Starting database container..."
-    cd "$BACKEND_DIR/docker"
-    docker-compose up -d 2>&1 | sed 's/^/  /'
-    log_success "Database container started"
-
-    # Wait for database to be ready
-    log_info "Waiting for PostgreSQL database to be ready..."
-    sleep 5
-    CONTAINER_NAME=$(docker-compose ps -q postgres)
-    for i in {1..30}; do
-        if docker exec $CONTAINER_NAME pg_isready -U "$DB_USER" &>/dev/null; then
-            log_success "Database is ready!"
-            break
-        fi
-        echo -n "."
-        sleep 2
-    done
-    echo
-
+# Install PostgreSQL
+if ! command -v psql &> /dev/null; then
+    log_info "Installing PostgreSQL server..."
+    sudo apt-get update 2>&1 | sed 's/^/  /'
+    sudo apt-get install -y postgresql postgresql-contrib 2>&1 | sed 's/^/  /'
+    log_success "PostgreSQL installed"
 else
-    ################################################################################
-    # Native PostgreSQL Installation
-    ################################################################################
-    log_info "Installing PostgreSQL natively..."
-    
-    # Install PostgreSQL
-    if ! command -v psql &> /dev/null; then
-        log_info "Installing PostgreSQL server..."
-        sudo apt-get update 2>&1 | sed 's/^/  /'
-        sudo apt-get install -y postgresql postgresql-contrib 2>&1 | sed 's/^/  /'
-        log_success "PostgreSQL installed"
-    else
-        log_success "PostgreSQL is already installed"
-    fi
-    
-    # Start and enable PostgreSQL service
-    sudo systemctl start postgresql
-    sudo systemctl enable postgresql
-    log_success "PostgreSQL service started"
-    
-    # Create database user and database
-    log_info "Creating database user and database..."
-    
-    # Create user
-    sudo -u postgres psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';" 2>/dev/null || \
-        sudo -u postgres psql -c "ALTER USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';"
-    
-    # Create database
-    sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};" 2>/dev/null || \
-        log_warning "Database ${DB_NAME} already exists"
-    
-    # Grant privileges
-    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};"
-    
-    log_success "Database and user created"
-    
-    # Configure PostgreSQL to accept connections
-    log_info "Configuring PostgreSQL authentication..."
-    
-    PG_VERSION=$(psql --version | grep -oP '\d+' | head -1)
-    PG_HBA="/etc/postgresql/${PG_VERSION}/main/pg_hba.conf"
-    PG_CONF="/etc/postgresql/${PG_VERSION}/main/postgresql.conf"
-    
-    # Add authentication rule for the database user
-    if ! sudo grep -q "host.*${DB_NAME}.*${DB_USER}" "$PG_HBA" 2>/dev/null; then
-        echo "host    ${DB_NAME}    ${DB_USER}    127.0.0.1/32    md5" | sudo tee -a "$PG_HBA" > /dev/null
-        echo "host    ${DB_NAME}    ${DB_USER}    ::1/128         md5" | sudo tee -a "$PG_HBA" > /dev/null
-    fi
-    
-    # Ensure PostgreSQL listens on localhost
-    sudo sed -i "s/#listen_addresses = 'localhost'/listen_addresses = 'localhost'/" "$PG_CONF" 2>/dev/null || true
-    
-    # Change port if not default
-    if [ "$DB_PORT" != "5432" ]; then
-        sudo sed -i "s/port = 5432/port = ${DB_PORT}/" "$PG_CONF"
-    fi
-    
-    # Restart PostgreSQL to apply changes
-    sudo systemctl restart postgresql
-    log_success "PostgreSQL configured and restarted"
-    
-    # Test connection
-    log_info "Testing database connection..."
-    if PGPASSWORD="${DB_PASSWORD}" psql -h localhost -p ${DB_PORT} -U ${DB_USER} -d ${DB_NAME} -c "SELECT 1;" &>/dev/null; then
-        log_success "Database connection successful!"
-    else
-        log_warning "Could not verify database connection. Please check credentials."
-    fi
+    log_success "PostgreSQL is already installed"
+fi
+
+# Start and enable PostgreSQL service
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+log_success "PostgreSQL service started"
+
+# Create database user and database
+log_info "Creating database user and database..."
+
+# Create user
+sudo -u postgres psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';" 2>/dev/null || \
+    sudo -u postgres psql -c "ALTER USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';"
+
+# Create database
+sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};" 2>/dev/null || \
+    log_warning "Database ${DB_NAME} already exists"
+
+# Grant privileges
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};"
+
+log_success "Database and user created"
+
+# Configure PostgreSQL to accept connections
+log_info "Configuring PostgreSQL authentication..."
+
+PG_VERSION=$(psql --version | grep -oP '\d+' | head -1)
+PG_HBA="/etc/postgresql/${PG_VERSION}/main/pg_hba.conf"
+PG_CONF="/etc/postgresql/${PG_VERSION}/main/postgresql.conf"
+
+# Add authentication rule for the database user
+if ! sudo grep -q "host.*${DB_NAME}.*${DB_USER}" "$PG_HBA" 2>/dev/null; then
+    echo "host    ${DB_NAME}    ${DB_USER}    127.0.0.1/32    md5" | sudo tee -a "$PG_HBA" > /dev/null
+    echo "host    ${DB_NAME}    ${DB_USER}    ::1/128         md5" | sudo tee -a "$PG_HBA" > /dev/null
+fi
+
+# Ensure PostgreSQL listens on localhost
+sudo sed -i "s/#listen_addresses = 'localhost'/listen_addresses = 'localhost'/" "$PG_CONF" 2>/dev/null || true
+
+# Restart PostgreSQL to apply changes
+sudo systemctl restart postgresql
+log_success "PostgreSQL configured and restarted"
+
+# Test connection
+log_info "Testing database connection..."
+if PGPASSWORD="${DB_PASSWORD}" psql -h localhost -p ${DB_PORT} -U ${DB_USER} -d ${DB_NAME} -c "SELECT 1;" &>/dev/null; then
+    log_success "Database connection successful!"
+else
+    log_warning "Could not verify database connection. Please check credentials."
 fi
 
 # Return to backend directory
@@ -484,14 +324,28 @@ if ! command -v node &> /dev/null; then
     sudo apt-get install -y nodejs 2>&1 | sed 's/^/  /'
     log_success "Node.js installed"
 else
-    log_success "Node.js is already installed ($(node --version))"
+    NODE_VERSION=$(node --version | cut -d'v' -f2 | cut -d'.' -f1)
+    if [ "$NODE_VERSION" -lt 20 ]; then
+        log_warning "Node.js version is too old ($NODE_VERSION). Installing Node.js 20 LTS..."
+        curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - 2>&1 | sed 's/^/  /'
+        sudo apt-get install -y nodejs 2>&1 | sed 's/^/  /'
+        log_success "Node.js upgraded to version 20"
+    else
+        log_success "Node.js is already installed ($(node --version))"
+    fi
 fi
 
 # Install pnpm
 log_info "Checking pnpm installation..."
 if ! command -v pnpm &> /dev/null; then
     log_info "Installing pnpm..."
-    npm install -g pnpm 2>&1 | sed 's/^/  /'
+    # Use corepack (included with Node.js 16.9+) or npm
+    if command -v corepack &> /dev/null; then
+        sudo corepack enable 2>&1 | sed 's/^/  /'
+        sudo corepack prepare pnpm@latest --activate 2>&1 | sed 's/^/  /'
+    else
+        sudo npm install -g pnpm 2>&1 | sed 's/^/  /'
+    fi
     log_success "pnpm installed"
 else
     log_success "pnpm is already installed ($(pnpm --version))"
@@ -509,10 +363,29 @@ pnpm prisma generate 2>&1 | sed 's/^/  /'
 pnpm prisma migrate deploy 2>&1 | sed 's/^/  /'
 log_success "Database migrations completed"
 
-# Build backend
-log_info "Building backend application..."
-pnpm build 2>&1 | sed 's/^/  /'
-log_success "Backend built successfully"
+# Build backend (Next.js standalone)
+log_info "Building backend application in standalone mode..."
+set +e  # Temporarily disable exit on error to capture output
+BUILD_OUTPUT=$(NEXT_OUTPUT_MODE=standalone pnpm build 2>&1)
+BUILD_EXIT_CODE=$?
+echo "$BUILD_OUTPUT" | sed 's/^/  /'
+set -e  # Re-enable exit on error
+
+if [ $BUILD_EXIT_CODE -ne 0 ]; then
+    log_error "Backend build FAILED with exit code $BUILD_EXIT_CODE"
+    log_error "There are TypeScript compilation errors in your code."
+    log_error "Please fix the errors in types/validator.ts and run the installer again."
+    exit 1
+fi
+
+# Verify standalone build was created
+if [ ! -f "$BACKEND_DIR/.next/standalone/server.js" ]; then
+    log_error "Standalone build failed - server.js not found"
+    log_error "Expected file: $BACKEND_DIR/.next/standalone/server.js"
+    exit 1
+fi
+
+log_success "Backend built successfully in standalone mode"
 
 ################################################################################
 # Install Frontend
@@ -521,51 +394,73 @@ log_header "Installing Frontend"
 
 # Create frontend directory
 log_info "Creating frontend directory: $FRONTEND_DIR"
-mkdir -p "$FRONTEND_DIR"
+sudo mkdir -p "$FRONTEND_DIR"
+sudo chown www-data:www-data "$FRONTEND_DIR"
+sudo chmod 755 "$FRONTEND_DIR"
 
 # Copy frontend files
 log_info "Copying frontend files..."
 if [ -d "$TEMP_DIR/frontend" ]; then
-    cp -r "$TEMP_DIR/frontend/"* "$FRONTEND_DIR/"
+    sudo cp -r "$TEMP_DIR/frontend/"* "$FRONTEND_DIR/"
+    sudo chown -R www-data:www-data "$FRONTEND_DIR"
+    sudo find "$FRONTEND_DIR" -type d -exec chmod 755 {} \;
+    sudo find "$FRONTEND_DIR" -type f -exec chmod 644 {} \;
     log_success "Frontend files copied"
 else
-    log_warning "Frontend directory not found in repository - creating placeholder"
-    mkdir -p "$FRONTEND_DIR/public"
-    echo "<html><body><h1>ClutchPay Frontend</h1><p>Configure your frontend here</p></body></html>" > "$FRONTEND_DIR/public/index.html"
+    log_error "Frontend directory not found in repository"
 fi
 
 # Create frontend .env file
 log_info "Creating frontend .env file..."
 cat > "$FRONTEND_DIR/.env" << EOF
 # Backend API Configuration
-VITE_API_URL=${BACKEND_URL}
-REACT_APP_API_URL=${BACKEND_URL}
-NEXT_PUBLIC_API_URL=${BACKEND_URL}
+API_URL=${BACKEND_URL}
 
 # Frontend Configuration
 PORT=${FRONTEND_PORT}
 NODE_ENV=production
-
-# Optional: Add your frontend-specific variables here
-# VITE_STRIPE_PUBLISHABLE_KEY=
-# VITE_GOOGLE_ANALYTICS_ID=
 EOF
 
 log_success "Frontend .env file created"
 
 # Install Apache
 log_info "Checking Apache installation..."
-if ! command -v apache2 &> /dev/null; then
+
+# Check if apache2 command exists AND if systemd service exists
+APACHE_INSTALLED=false
+if command -v apache2 &> /dev/null && systemctl list-unit-files | grep -q "apache2.service"; then
+    APACHE_INSTALLED=true
+    log_success "Apache is already installed"
+fi
+
+if [ "$APACHE_INSTALLED" = "false" ]; then
     log_info "Installing Apache web server..."
     sudo apt-get update 2>&1 | sed 's/^/  /'
     sudo apt-get install -y apache2 2>&1 | sed 's/^/  /'
     log_success "Apache installed"
-else
-    log_success "Apache is already installed"
 fi
 
-APACHE_CMD="apache2"
+# Always ensure Apache is started and enabled
+log_info "Ensuring Apache service is running..."
+if ! sudo systemctl is-active --quiet apache2; then
+    sudo systemctl start apache2 2>&1 | sed 's/^/  /'
+fi
+if ! sudo systemctl is-enabled --quiet apache2; then
+    sudo systemctl enable apache2 2>&1 | sed 's/^/  /'
+fi
+log_success "Apache service is running"
+
 APACHE_CONF_DIR="/etc/apache2/sites-available"
+APACHE_SITES_ENABLED="/etc/apache2/sites-enabled"
+
+# Verify Apache directories exist - if not, Apache installation failed
+if [ ! -d "$APACHE_CONF_DIR" ]; then
+    log_error "Apache configuration directory not found: $APACHE_CONF_DIR"
+    log_error "Apache installation may have failed. Please install Apache manually:"
+    log_error "  sudo apt-get update"
+    log_error "  sudo apt-get install -y apache2"
+    exit 1
+fi
 
 # Create Apache virtual host configuration
 log_info "Creating Apache virtual host configuration..."
@@ -574,12 +469,13 @@ APACHE_CONF_FILE="$APACHE_CONF_DIR/clutchpay.conf"
 sudo tee "$APACHE_CONF_FILE" > /dev/null << EOF
 <VirtualHost *:${FRONTEND_PORT}>
     ServerName localhost
-    DocumentRoot ${FRONTEND_DIR}/public
+    DocumentRoot ${FRONTEND_DIR}
     
-    <Directory ${FRONTEND_DIR}/public>
+    <Directory ${FRONTEND_DIR}>
         Options Indexes FollowSymLinks
         AllowOverride All
         Require all granted
+        DirectoryIndex index.html login.html
         
         # Enable mod_rewrite for SPA routing
         RewriteEngine On
@@ -601,55 +497,96 @@ EOF
 
 log_success "Apache virtual host created"
 
+# Disable default site
+if [ -f "$APACHE_SITES_ENABLED/000-default.conf" ]; then
+    log_info "Disabling default Apache site..."
+    sudo a2dissite 000-default.conf 2>&1 | sed 's/^/  /' || true
+fi
+
 # Enable required Apache modules
 log_info "Enabling required Apache modules..."
-sudo a2enmod rewrite proxy proxy_http 2>&1 | sed 's/^/  /'
-sudo a2ensite clutchpay.conf 2>&1 | sed 's/^/  /'
+sudo a2enmod rewrite 2>&1 | sed 's/^/  /' || log_warning "Could not enable rewrite module"
+sudo a2enmod proxy 2>&1 | sed 's/^/  /' || log_warning "Could not enable proxy module"
+sudo a2enmod proxy_http 2>&1 | sed 's/^/  /' || log_warning "Could not enable proxy_http module"
+
+# Enable ClutchPay site
+log_info "Enabling ClutchPay site..."
+sudo a2ensite clutchpay.conf 2>&1 | sed 's/^/  /' || log_warning "Could not enable site"
 
 # Update Apache port if not 80
 if [ "$FRONTEND_PORT" != "80" ]; then
-    sudo sed -i "s/Listen 80/Listen $FRONTEND_PORT/g" /etc/apache2/ports.conf 2>/dev/null || true
+    if [ -f "/etc/apache2/ports.conf" ]; then
+        sudo sed -i "s/Listen 80/Listen $FRONTEND_PORT/g" /etc/apache2/ports.conf 2>/dev/null || true
+    fi
 fi
 
-sudo systemctl restart apache2 2>&1 | sed 's/^/  /'
-log_success "Apache configured and restarted"
+# Restart Apache
+log_info "Restarting Apache..."
+set +e
+RESTART_OUTPUT=$(sudo systemctl restart apache2 2>&1)
+RESTART_EXIT_CODE=$?
+set -e
+
+if [ $RESTART_EXIT_CODE -ne 0 ]; then
+    log_error "Failed to restart Apache (exit code: $RESTART_EXIT_CODE)"
+    echo "$RESTART_OUTPUT" | sed 's/^/  /'
+    log_error "Checking Apache status..."
+    sudo systemctl status apache2 --no-pager | sed 's/^/  /'
+    log_error "Checking Apache configuration..."
+    sudo apache2ctl configtest 2>&1 | sed 's/^/  /'
+    exit 1
+fi
+
+# Verify Apache is actually running
+if ! sudo systemctl is-active --quiet apache2; then
+    log_error "Apache service is not running after restart"
+    sudo systemctl status apache2 --no-pager | sed 's/^/  /'
+    exit 1
+fi
+
+log_success "Apache configured and restarted successfully"
+
+# Verify Apache is actually running
+if ! sudo systemctl is-active --quiet apache2; then
+    log_error "Apache service is not running after restart"
+    sudo systemctl status apache2 --no-pager | sed 's/^/  /'
+    exit 1
+fi
+
+log_success "Apache configured and restarted successfully"
 
 ################################################################################
-# Create systemd service for backend (optional)
+# Create systemd service for backend
 ################################################################################
 log_header "Creating System Services"
 
-read -p "Do you want to create a systemd service for the backend? (y/n): " CREATE_SERVICE
-if [[ $CREATE_SERVICE =~ ^[Yy]$ ]]; then
-    log_info "Creating systemd service..."
-    
-    sudo tee /etc/systemd/system/clutchpay-backend.service > /dev/null << EOF
+log_info "Creating systemd service for backend..."
+
+sudo tee /etc/systemd/system/clutchpay-backend.service > /dev/null << EOF
 [Unit]
-Description=ClutchPay Backend API
-After=network.target docker.service
-Requires=docker.service
+Description=ClutchPay Backend API (Next.js Standalone)
+After=network.target postgresql.service
+Requires=postgresql.service
 
 [Service]
 Type=simple
 User=$USER
 WorkingDirectory=$BACKEND_DIR
 Environment="NODE_ENV=production"
-ExecStart=$(which pnpm) start
+Environment="PORT=3000"
+ExecStart=/usr/bin/node $BACKEND_DIR/.next/standalone/server.js
 Restart=always
 RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
 EOF
-    
-    sudo systemctl daemon-reload
-    sudo systemctl enable clutchpay-backend.service
-    sudo systemctl start clutchpay-backend.service
-    
-    log_success "Systemd service created and started"
-else
-    log_info "Skipping systemd service creation"
-fi
+
+sudo systemctl daemon-reload
+sudo systemctl enable clutchpay-backend.service
+sudo systemctl start clutchpay-backend.service
+
+log_success "Systemd service created and started"
 
 ################################################################################
 # Cleanup
@@ -663,7 +600,7 @@ log_success "Temporary files removed"
 ################################################################################
 # Installation complete
 ################################################################################
-log_header "Installation Complete! 🎉"
+log_header "Installation Complete"
 
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN}  ClutchPay has been successfully installed!${NC}"
@@ -683,70 +620,6 @@ echo -e "   Host:     ${GREEN}localhost:$DB_PORT${NC}"
 echo -e "   Database: ${GREEN}$DB_NAME${NC}"
 echo -e "   User:     ${GREEN}$DB_USER${NC}\n"
 
-echo -e "${CYAN}⚙️  Useful Commands:${NC}"
-echo -e "   ${YELLOW}# Start/Stop Backend${NC}"
-echo -e "   cd $BACKEND_DIR"
-echo -e "   pnpm start                  # Start backend server"
-echo -e "   pnpm dev                    # Start in development mode"
-echo -e "   pnpm test                   # Run tests"
-echo -e ""
-echo -e "   ${YELLOW}# Database Management${NC}"
-if [ "$DB_INSTALL_METHOD" = "1" ]; then
-    echo -e "   cd $BACKEND_DIR/docker"
-    echo -e "   docker-compose up -d      # Start database"
-    echo -e "   docker-compose down       # Stop database"
-    echo -e "   docker-compose logs -f    # View logs"
-else
-    echo -e "   sudo systemctl start postgresql    # Start PostgreSQL"
-    echo -e "   sudo systemctl stop postgresql     # Stop PostgreSQL"
-    echo -e "   sudo systemctl status postgresql   # Check status"
-    echo -e "   psql -h localhost -p ${DB_PORT} -U ${DB_USER} -d ${DB_NAME}  # Connect to database"
-fi
-echo -e ""
-echo -e "   ${YELLOW}# Prisma Commands${NC}"
-echo -e "   pnpm prisma studio          # Open Prisma Studio (database GUI)"
-echo -e "   pnpm prisma migrate dev     # Create new migration"
-echo -e "   pnpm prisma generate        # Regenerate Prisma Client"
-echo -e ""
-echo -e "   ${YELLOW}# Apache Commands${NC}"
-echo -e "   sudo systemctl restart apache2     # Restart Apache"
-echo -e "   sudo systemctl status apache2      # Check Apache status"
-echo -e "   sudo tail -f /var/log/apache2/clutchpay_error.log  # View errors"
-echo -e ""
-
-if [[ $CREATE_SERVICE =~ ^[Yy]$ ]]; then
-    echo -e "   ${YELLOW}# Systemd Service${NC}"
-    echo -e "   sudo systemctl start clutchpay-backend    # Start service"
-    echo -e "   sudo systemctl stop clutchpay-backend     # Stop service"
-    echo -e "   sudo systemctl status clutchpay-backend   # Check status"
-    echo -e "   sudo journalctl -u clutchpay-backend -f   # View logs"
-    echo -e ""
-fi
-
-echo -e "${YELLOW}📝 Next Steps:${NC}"
-echo -e "   1. Review and update ${GREEN}$BACKEND_DIR/.env${NC} with your API keys:"
-echo -e "      - Stripe keys (for payments)"
-echo -e "      - PayPal credentials (for payouts)"
-echo -e "      - Email SMTP settings (for notifications)"
-echo -e ""
-echo -e "   2. Review and update ${GREEN}$FRONTEND_DIR/.env${NC} if needed"
-echo -e ""
-echo -e "   3. Test the installation:"
-echo -e "      - Backend:  ${CYAN}curl http://localhost:$BACKEND_PORT/api/health${NC}"
-echo -e "      - Frontend: ${CYAN}curl http://localhost:$FRONTEND_PORT${NC}"
-echo -e ""
-echo -e "   4. Create your first admin user or run database seeds"
-echo -e ""
-
-echo -e "${YELLOW}⚠️  Important Security Notes:${NC}"
-echo -e "   - Change database passwords in production environments"
-echo -e "   - Use environment-specific secrets for JWT and NextAuth"
-echo -e "   - Configure firewall rules for production deployments"
-echo -e "   - Enable HTTPS with SSL certificates (Let's Encrypt)"
-echo -e "   - Review CORS settings in ${GREEN}$BACKEND_DIR/.env${NC}"
-echo -e ""
-
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN}  Thank you for installing ClutchPay!${NC}"
-echo -e "${GREEN}  For support, visit: https://github.com/GCousido/ClutchPay${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
