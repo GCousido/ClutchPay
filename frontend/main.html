@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard - ClutchPay</title>
+  <link rel="stylesheet" href="/CSS/style.css" />
+  <script src="/JS/i18n.js"></script>
+  <script src="/JS/auth.js"></script>
+  <script src="/JS/dashboard_usuario.js"></script>
+</head>
+
+<body>
+  <div class="dashboard">
+    <aside class="user-sidebar">
+      <div class="user-profile">
+        <img id="profile-pic" alt="Foto de perfil" class="profile-pic" />
+        <h2 id="user-name">Cargando...</h2>
+      </div>
+      <nav class="user-nav">
+        <a href="/friends.html" class="nav-link">👥 Amigos</a>
+        <button id="edit-profile-btn" class="btn-icon" title="Editar perfil">
+          <img src="/imagenes/edit.svg" alt="Editar" />
+        </button>
+        <button id="logout-btn" class="btn-icon" title="Cerrar sesión">
+          <img src="/imagenes/logout.svg" alt="Salir" />
+        </button>
+      </nav>
+    </aside>
+    <main class="dashboard-main">
+      <h2>¡Bienvenido a ClutchPay! 🎉</h2>
+      <p>Tu panel de control está listo. Desde aquí podrás gestionar tus contactos, realizar pagos y mucho más.</p>
+    </main>
+  </div>
+</body>
+
+</html>

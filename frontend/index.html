@@ -1,11 +1,59 @@
-<!DOCTYPE html>
-<html lang="en">
+<!-- index.html -->
+<!doctype html>
+<html lang="es">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ClutchPay</title>
+  <link rel="stylesheet" href="/CSS/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <script src="/JS/i18n.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('boton-login').textContent = i18n.t('general.login');
+      document.getElementById('boton-registro').textContent = i18n.t('general.register');
+      document.getElementById('bienvenida').textContent = i18n.t('general.welcome');
+      document.getElementById('label-idiomas').textContent = i18n.t('general.languages');
+
+      const selectIdiomas = document.getElementById('idiomas');
+      selectIdiomas.innerHTML = '';
+      const idiomasDisponibles = ['es', 'en'];
+      idiomasDisponibles.forEach(lang => {
+        const option = document.createElement('option');
+        option.value = lang;
+        option.textContent = lang.toUpperCase();
+        selectIdiomas.appendChild(option);
+      });
+      selectIdiomas.value = i18n.currentLang;
+
+      selectIdiomas.addEventListener('change', (e) => {
+        i18n.setLanguage(e.target.value);
+        location.reload();
+      });
+    });
+  </script>
 </head>
+
 <body>
-    <h1>Hello, World!</h1>
+  <main>
+    <div class="welcome-box">
+      <h1 id="bienvenida"></h1>
+      <div class="button-group">
+        <button class="btn-principal" type="button" id="boton-login"
+          onclick="window.location.href='login.html'"></button>
+        <button class="btn-principal" type="button" id="boton-registro"
+          onclick="window.location.href='register.html'"></button>
+      </div>
+    </div>
+  </main>
+  <div class="footer-box">
+    <img src="imagenes/globe.svg" alt="Idiomas" class="globe-icon" />
+    <span id="label-idiomas" class="footer-label"></span>
+    <select id="idiomas" class="footer-select" name="idiomas"></select>
+  </div>
+
 </body>
+
 </html>

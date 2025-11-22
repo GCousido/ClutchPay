@@ -99,11 +99,6 @@ export const authOptions: NextAuthOptions = {
     },
   },
 
-  pages: {
-    signIn: '/auth/login',
-    error: '/auth/error',
-  },
-
   // Session configuration
   session: {
     strategy: 'jwt',
