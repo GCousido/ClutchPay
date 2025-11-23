@@ -1,0 +1,77 @@
+<!-- login.html -->
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title id="title">ClutchPay</title>
+  <link rel="stylesheet" href="/CSS/styles.css" />
+  <script src="/JS/i18n.js"></script>
+  <script src="/JS/validaciones.js"></script>
+  <script src="/JS/auth.js"></script>
+  <script src="/JS/auth-login.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      i18n.setLanguage(localStorage.getItem('lang') || 'es');
+      document.getElementById('login-title').textContent = i18n.t('login.title');
+      document.getElementById('label-email').textContent = i18n.t('login.email');
+      document.getElementById('label-password').textContent = i18n.t('login.password');
+      document.getElementById('login-btn').textContent = i18n.t('login.signIn');
+      document.getElementById('back-btn').textContent = i18n.t('general.back');
+      document.getElementById('label-idiomas').textContent = i18n.t('general.languages');
+
+      const selectIdiomas = document.getElementById('idiomas');
+      selectIdiomas.innerHTML = '';
+      const idiomasDisponibles = ['es', 'en'];
+      idiomasDisponibles.forEach(lang => {
+        const option = document.createElement('option');
+        option.value = lang;
+        option.textContent = lang.toUpperCase();
+        selectIdiomas.appendChild(option);
+      });
+      selectIdiomas.value = i18n.currentLang;
+
+      selectIdiomas.addEventListener('change', (e) => {
+        i18n.setLanguage(e.target.value);
+        location.reload();
+      });
+    });
+  </script>
+</head>
+
+<body>
+  <header>
+    <h1></h1>
+  </header>
+
+  <main>
+    <div class="login-box">
+      <h1 id="login-title"></h1>
+      <form id="login-form">
+        <div class="form-group">
+          <label for="email" id="label-email"></label>
+          <input type="email" id="email" name="email" autocomplete="email" required>
+        </div>
+        <div class="form-group">
+          <label for="password" id="label-password"></label>
+          <input type="password" id="password" name="password" autocomplete="current-password" required>
+        </div>
+        <div class="login-btn-group">
+          <button type="submit" class="btn-principal" id="login-btn"></button>
+          <button type="button" class="btn-principal" id="back-btn"
+            onclick="window.location.href='index.html'"></button>
+        </div>
+
+      </form>
+    </div>
+  </main>
+
+  <div class="footer-box">
+    <img src="imagenes/globe.svg" alt="Idiomas" class="globe-icon" />
+    <span id="label-idiomas" class="footer-label"></span>
+    <select id="idiomas" class="footer-select" name="idiomas"></select>
+  </div>
+</body>
+
+</html>
