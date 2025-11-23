@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=ClutchPay Installer (Docker)
+Comment=Install ClutchPay using Docker on Debian 11
+Exec=sh -c 'cd "$(dirname "%k")"; chmod +x ./installer_docker.sh; sudo -E bash ./installer_docker.sh; echo; echo "Press Enter to close..."; read _'
+Icon=utilities-terminal
+Terminal=true
+Categories=Utility;System;
+StartupNotify=true
+X-GNOME-UsesNotifications=false

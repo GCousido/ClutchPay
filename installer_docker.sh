@@ -9,7 +9,7 @@
 # - Apache Frontend (Docker container, port 80)
 ################################################################################
 
-set -e  # Exit on any error
+set -Eeuo pipefail  # Exit on error, unset vars, and fail pipelines
 
 # Colors
 RED='\033[0;31m'
@@ -48,9 +48,61 @@ log_step() {
     echo -e "${CYAN}▶${NC} $1"
 }
 
+# Global state flags for cleanup
+REPO_CLONED=false
+DB_STARTED=false
+FRONTEND_STARTED=false
+SERVICE_INSTALLED=false
+SUCCESS=false
+
+# Cleanup routine on any failure
+cleanup() {
+    log_warning "Installation failed. Starting cleanup..."
+
+    # Stop and remove backend systemd service if created
+    if [ "$SERVICE_INSTALLED" = true ]; then
+        log_step "Removing systemd service clutchpay-backend..."
+        systemctl stop clutchpay-backend.service > /dev/null 2>&1 || true
+        systemctl disable clutchpay-backend.service > /dev/null 2>&1 || true
+        rm -f /etc/systemd/system/clutchpay-backend.service || true
+        systemctl daemon-reload > /dev/null 2>&1 || true
+    fi
+
+    # Bring down frontend container
+    if [ "$FRONTEND_STARTED" = true ] && [ -d "${FRONTEND_DIR:-}/docker" ]; then
+        log_step "Stopping frontend containers..."
+        (cd "${FRONTEND_DIR:-}/docker" && docker compose down -v --rmi local > /dev/null 2>&1) || true
+    fi
+
+    # Bring down database container
+    if [ "$DB_STARTED" = true ] && [ -d "${BACKEND_DIR:-}/docker" ]; then
+        log_step "Stopping database containers..."
+        (cd "${BACKEND_DIR:-}/docker" && docker compose down -v > /dev/null 2>&1) || true
+    fi
+
+    # Remove cloned repository if we created it in this run
+    if [ "$REPO_CLONED" = true ] && [ -d "${INSTALL_DIR:-}" ]; then
+        log_step "Removing installation directory $INSTALL_DIR..."
+        rm -rf "${INSTALL_DIR:-}" || true
+    fi
+
+    log_error "Cleanup complete. Please review logs and retry."
+}
+
+on_error() {
+    local line=$1
+    log_error "Error at line ${line}: '${BASH_COMMAND}'"
+    cleanup
+    exit 1
+}
+
+trap 'on_error $LINENO' ERR
+trap 'cleanup; exit 1' INT TERM
+
 # Configuration
 INSTALL_DIR="/opt/clutchpay"
-BACKEND_DIR="$INSTALL_DIR/backend"
+BACKEND_SUBDIR="back"
+BACKEND_DIR="$INSTALL_DIR/$BACKEND_SUBDIR"
 FRONTEND_DIR="$INSTALL_DIR/frontend"
 BACKEND_PORT=3000
 FRONTEND_PORT=80
@@ -199,8 +251,18 @@ if [ -d "$INSTALL_DIR" ]; then
 fi
 
 log_step "Cloning from GitHub ($REPO_BRANCH branch)..."
-git clone --branch "$REPO_BRANCH" --depth 1 "$REPO_URL" "$INSTALL_DIR" > /dev/null 2>&1
+git clone --branch "$REPO_BRANCH" --depth 1 "$REPO_URL" "$INSTALL_DIR" > /dev/null 2>&1 || { log_error "Git clone failed"; exit 1; }
+REPO_CLONED=true
 log_success "Repository cloned to $INSTALL_DIR"
+
+# Validate expected directories
+if [ ! -d "$BACKEND_DIR" ]; then
+    log_error "Backend directory '$BACKEND_SUBDIR' not found inside repository. Aborting to avoid creating an empty backend."; cleanup; exit 1;
+fi
+if [ ! -d "$FRONTEND_DIR" ]; then
+    log_error "Frontend directory 'frontend' not found inside repository. Aborting."; cleanup; exit 1;
+fi
+log_success "Verified backend and frontend directories exist"
 
 ################################################################################
 # Configure Backend
@@ -236,16 +298,6 @@ JWT_SECRET=${JWT_SECRET}
 # Frontend
 FRONTEND_URL=http://localhost:${FRONTEND_PORT}
 FRONTEND_PORT=${FRONTEND_PORT}
-
-# Stripe (configure later)
-STRIPE_SECRET_KEY=
-STRIPE_WEBHOOK_SECRET=
-STRIPE_CURRENCY=eur
-
-# PayPal (configure later)
-PAYPAL_CLIENT_ID=
-PAYPAL_CLIENT_SECRET=
-PAYPAL_MODE=sandbox
 EOF
 
 log_success "Backend .env created with secure secrets"
@@ -267,17 +319,25 @@ log_header "Starting PostgreSQL Database"
 cd "$BACKEND_DIR/docker"
 log_step "Starting PostgreSQL container..."
 docker compose up -d
+DB_STARTED=true
 sleep 3
 
 # Wait for database
 log_step "Waiting for database to be ready..."
+DB_READY=false
 for i in {1..30}; do
     if docker compose exec -T postgres pg_isready -U "$DB_USER" -d "$DB_NAME" > /dev/null 2>&1; then
         log_success "Database is ready!"
+        DB_READY=true
         break
     fi
     sleep 1
 done
+if [ "$DB_READY" != true ]; then
+    log_error "Database did not become ready in time"
+    cleanup
+    exit 1
+fi
 
 ################################################################################
 # Build Backend
@@ -286,8 +346,12 @@ log_header "Building Backend Application"
 
 cd "$BACKEND_DIR"
 
-log_step "Installing dependencies..."
-pnpm install --prod > /dev/null 2>&1
+log_step "Installing dependencies (with dev for build)..."
+if ! pnpm install --frozen-lockfile 2>&1 | grep -v "Progress\|Resolving\|Downloading" | tail -10; then
+    log_error "Dependency installation failed"
+    cleanup
+    exit 1
+fi
 log_success "Dependencies installed"
 
 log_step "Generating Prisma Client..."
@@ -299,10 +363,17 @@ pnpm prisma migrate deploy > /dev/null 2>&1
 log_success "Database migrations completed"
 
 log_step "Building Next.js application (standalone mode)..."
-pnpm build > /dev/null 2>&1
+if ! pnpm build 2>&1 | tee /tmp/clutchpay-build.log | tail -20; then
+    log_error "Build failed. Last 20 lines of output shown above."
+    log_error "Full build log saved to: /tmp/clutchpay-build.log"
+    cleanup
+    exit 1
+fi
 
 if [ ! -f "$BACKEND_DIR/.next/standalone/server.js" ]; then
-    log_error "Build failed - server.js not found"
+    log_error "Build completed but server.js not found in .next/standalone/"
+    log_error "This may indicate output:'standalone' is missing in next.config.ts"
+    cleanup
     exit 1
 fi
 
@@ -336,6 +407,7 @@ log_header "Starting Frontend (Apache)"
 cd "$FRONTEND_DIR/docker"
 log_step "Building and starting Apache container..."
 docker compose up -d --build > /dev/null 2>&1
+FRONTEND_STARTED=true
 log_success "Frontend container started"
 
 ################################################################################
@@ -363,6 +435,7 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 EOF
+SERVICE_INSTALLED=true
 
 systemctl daemon-reload
 systemctl enable clutchpay-backend.service > /dev/null 2>&1
