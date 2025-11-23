@@ -4,7 +4,7 @@
 #                     ClutchPay Installation Script - Debian 11
 ################################################################################
 # This script automates the complete installation of ClutchPay on Debian 11:
-# - Backend (Next.js API) with PostgreSQL in Docker
+# - Backend (Next.js API) with PostgreSQL
 # - Frontend (Static site) with Apache web server
 # - Automatic dependency installation and configuration
 ################################################################################

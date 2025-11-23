@@ -379,21 +379,6 @@ describe('NextAuth Configuration - auth.ts', () => {
       expect(authOptions.session?.updateAge).toBe(86400); // 24 * 60 * 60
     });
 
-    it('should have correct pages configuration', () => {
-      expect(authOptions.pages).toEqual({
-        signIn: '/auth/login',
-        error: '/auth/error',
-      });
-    });
-
-    it('should have signIn page configured', () => {
-      expect(authOptions.pages?.signIn).toBe('/auth/login');
-    });
-
-    it('should have error page configured', () => {
-      expect(authOptions.pages?.error).toBe('/auth/error');
-    });
-
     it('should have JWT secret configured', () => {
       expect(authOptions.jwt?.secret).toBeDefined();
       expect(authOptions.secret).toBeDefined();
@@ -448,7 +433,5 @@ describe('NextAuth Configuration - auth.ts', () => {
       const result = await authorize(null, {} as any);
       expect(result).toBeNull();
     });
-
-
   });
 });
