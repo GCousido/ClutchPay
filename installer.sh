@@ -282,10 +282,11 @@ if ! command -v docker &> /dev/null; then
     if [ "$EUID" -ne 0 ]; then
         $SUDO_CMD usermod -aG docker $USER
         log_success "Docker installed"
-        log_warning "User '$USER' added to docker group"
-        log_warning "Group changes require a new login session to take effect"
-        log_info "Please log out and log back in, then run this script again"
-        exit 0
+        log_success "User '$USER' added to docker group"
+        
+        # Activate the docker group immediately without logout
+        log_info "Activating docker group for current session..."
+        exec sg docker "$0 $*"
     fi
     
     log_success "Docker installed and started"
@@ -300,19 +301,18 @@ else
     # Check if user has docker permissions (only if not root)
     if [ "$EUID" -ne 0 ]; then
         if ! docker ps > /dev/null 2>&1; then
-            log_error "Docker is installed but you don't have permissions to use it"
+            log_warning "Docker permissions issue detected"
             
             # Check if user is in docker group
-            if groups $USER | grep -q '\bdocker\b'; then
-                log_warning "You are in the docker group, but changes haven't taken effect yet"
-                log_info "Please log out and log back in, then run this script again"
-            else
-                log_warning "Adding user '$USER' to docker group..."
+            if ! groups $USER | grep -q '\bdocker\b'; then
+                log_step "Adding user '$USER' to docker group..."
                 $SUDO_CMD usermod -aG docker $USER
-                log_info "User added to docker group"
-                log_info "Please log out and log back in, then run this script again"
+                log_success "User added to docker group"
             fi
-            exit 0
+            
+            # Activate the docker group immediately without logout
+            log_info "Activating docker group for current session..."
+            exec sg docker "$0 $*"
         fi
     fi
 fi
