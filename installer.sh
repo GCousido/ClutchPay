@@ -11,6 +11,9 @@
 
 set -Eeuo pipefail  # Exit on error, unset vars, and fail pipelines
 
+# Get absolute path of this script
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+
 # Check if running as root
 IS_ROOT=false
 if [ "$EUID" -eq 0 ]; then
@@ -286,7 +289,7 @@ if ! command -v docker &> /dev/null; then
         
         # Activate the docker group immediately without logout
         log_info "Activating docker group for current session..."
-        exec sg docker "$0 $*"
+        exec sg docker "$SCRIPT_PATH $*"
     fi
     
     log_success "Docker installed and started"
@@ -312,7 +315,7 @@ else
             
             # Activate the docker group immediately without logout
             log_info "Activating docker group for current session..."
-            exec sg docker "$0 $*"
+            exec sg docker "$SCRIPT_PATH $*"
         fi
     fi
 fi
