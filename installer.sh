@@ -358,15 +358,15 @@ fi
 log_header "Downloading ClutchPay"
 
 REPO_URL="https://github.com/GCousido/ClutchPay.git"
-REPO_BRANCH="production"
+REPO_TAG="primera-entrega"
 
 if [ -d "$INSTALL_DIR" ]; then
     log_warning "Installation directory exists. Backing up..."
     $SUDO_CMD mv "$INSTALL_DIR" "${INSTALL_DIR}.backup.$(date +%s)"
 fi
 
-log_step "Cloning from GitHub ($REPO_BRANCH branch)..."
-$SUDO_CMD git clone --branch "$REPO_BRANCH" --depth 1 "$REPO_URL" "$INSTALL_DIR" > /dev/null 2>&1 || { log_error "Git clone failed"; exit 1; }
+log_step "Cloning from GitHub (tag: $REPO_TAG)..."
+$SUDO_CMD git clone --branch "$REPO_TAG" --depth 1 "$REPO_URL" "$INSTALL_DIR" > /dev/null 2>&1 || { log_error "Git clone failed"; exit 1; }
 REPO_CLONED=true
 log_success "Repository cloned to $INSTALL_DIR"
 
