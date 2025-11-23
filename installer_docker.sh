@@ -363,6 +363,8 @@ pnpm prisma migrate deploy > /dev/null 2>&1
 log_success "Database migrations completed"
 
 log_step "Building Next.js application (standalone mode)..."
+# Ensure FRONTEND_URL is available during build for CORS config
+export FRONTEND_URL="http://localhost:${FRONTEND_PORT}"
 if ! pnpm build 2>&1 | tee /tmp/clutchpay-build.log | tail -20; then
     log_error "Build failed. Last 20 lines of output shown above."
     log_error "Full build log saved to: /tmp/clutchpay-build.log"
