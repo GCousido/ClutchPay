@@ -1,5 +1,5 @@
 // tests/api/users/user-contacts.test.ts
-import { GET, POST } from '@/app/api/users/[id]/contacts/route';
+import { GET, POST, DELETE } from '@/app/api/users/[id]/contacts/route';
 import { db } from '@/libs/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { clearMockSession, createAuthenticatedRequest, getJsonResponse } from '../../helpers/request';
@@ -519,6 +519,161 @@ describe('POST /api/users/[id]/contacts', () => {
 
       const res = await POST(req);
       expect(res.status).toBe(400); // Validation error (positive required)
+    });
+  });
+
+  describe('DELETE /api/users/:id/contacts', () => {
+    it('should delete an existing contact', async () => {
+      // Use one of the pre-connected contacts
+      const contactToRemove = contacts[0];
+      
+      const req = createAuthenticatedRequest(`http://localhost/api/users/${testUser.id}/contacts`, {
+        method: 'DELETE',
+        userId: testUser.id,
+        body: { contactId: contactToRemove.id },
+      });
+
+      const res = await DELETE(req);
+      expect(res.status).toBe(200);
+
+      const data = await getJsonResponse(res);
+      expect(data.message).toBe('Contact removed successfully');
+
+      // Verify contact was actually removed
+      const updated = await db.user.findUnique({
+        where: { id: testUser.id },
+        include: { contacts: true },
+      });
+      expect(updated?.contacts.some(c => c.id === contactToRemove.id)).toBe(false);
+    });
+
+    it('should return 401 if not authenticated', async () => {
+      clearMockSession();
+      const req = createAuthenticatedRequest(`http://localhost/api/users/${testUser.id}/contacts`, {
+        method: 'DELETE',
+        userId: null,
+        body: { contactId: contacts[1].id },
+      });
+
+      const res = await DELETE(req);
+      expect(res.status).toBe(401);
+    });
+
+    it('should return 404 when trying to delete from another user (dev mode bypasses auth)', async () => {
+      // In test/dev mode, requireSameUser doesn't throw, so it proceeds to check if contact exists
+      // Since otherUser has no contacts, it returns 404
+      const req = createAuthenticatedRequest(`http://localhost/api/users/${otherUser.id}/contacts`, {
+        method: 'DELETE',
+        userId: testUser.id,
+        body: { contactId: contacts[1].id },
+      });
+
+      const res = await DELETE(req);
+      expect(res.status).toBe(404); // Contact not found (because otherUser has no contacts)
+    });
+
+    it('should return 404 if contact does not exist in user\'s contacts', async () => {
+      // Use lonelyUser which has never been added as a contact to testUser
+      const req = createAuthenticatedRequest(`http://localhost/api/users/${testUser.id}/contacts`, {
+        method: 'DELETE',
+        userId: testUser.id,
+        body: { contactId: lonelyUser.id },
+      });
+
+      const res = await DELETE(req);
+      expect(res.status).toBe(404);
+
+      const data = await getJsonResponse(res);
+      expect(data.message).toBe('Contact not found');
+    });
+
+    it('should return 400 if contactId is missing', async () => {
+      const req = createAuthenticatedRequest(`http://localhost/api/users/${testUser.id}/contacts`, {
+        method: 'DELETE',
+        userId: testUser.id,
+        body: {},
+      });
+
+      const res = await DELETE(req);
+      expect(res.status).toBe(400);
+
+      const data = await getJsonResponse(res);
+      expect(data.message).toBe('contactId is required and must be a number');
+    });
+
+    it('should return 400 if contactId is not a number', async () => {
+      const req = createAuthenticatedRequest(`http://localhost/api/users/${testUser.id}/contacts`, {
+        method: 'DELETE',
+        userId: testUser.id,
+        body: { contactId: 'invalid' },
+      });
+
+      const res = await DELETE(req);
+      expect(res.status).toBe(400);
+
+      const data = await getJsonResponse(res);
+      expect(data.message).toBe('contactId is required and must be a number');
+    });
+
+    it('should return 400 if trying to remove yourself as contact', async () => {
+      const req = createAuthenticatedRequest(`http://localhost/api/users/${testUser.id}/contacts`, {
+        method: 'DELETE',
+        userId: testUser.id,
+        body: { contactId: testUser.id },
+      });
+
+      const res = await DELETE(req);
+      expect(res.status).toBe(400);
+
+      const data = await getJsonResponse(res);
+      expect(data.message).toBe('Cannot remove yourself as a contact');
+    });
+
+    it('should handle invalid user id in path', async () => {
+      const req = createAuthenticatedRequest(`http://localhost/api/users/invalid/contacts`, {
+        method: 'DELETE',
+        userId: testUser.id,
+        body: { contactId: contacts[1].id },
+      });
+
+      const res = await DELETE(req);
+      expect(res.status).toBe(400);
+    });
+
+    it('should handle negative contactId', async () => {
+      const req = createAuthenticatedRequest(`http://localhost/api/users/${testUser.id}/contacts`, {
+        method: 'DELETE',
+        userId: testUser.id,
+        body: { contactId: -1 },
+      });
+
+      const res = await DELETE(req);
+      expect(res.status).toBe(404); // Contact not found
+    });
+
+    it('should handle zero contactId', async () => {
+      const req = createAuthenticatedRequest(`http://localhost/api/users/${testUser.id}/contacts`, {
+        method: 'DELETE',
+        userId: testUser.id,
+        body: { contactId: 0 },
+      });
+
+      const res = await DELETE(req);
+      expect(res.status).toBe(400); // Cannot remove yourself (if userId is 0) or validation error
+    });
+
+    it('should handle non-existent contactId', async () => {
+      const req = createAuthenticatedRequest(`http://localhost/api/users/${testUser.id}/contacts`, {
+        method: 'DELETE',
+        userId: testUser.id,
+        body: { contactId: 999999 },
+      });
+
+      const res = await DELETE(req);
+      expect(res.status).toBe(404);
+
+      const data = await getJsonResponse(res);
+      expect(data.message).toBe('Contact not found');
     });
   });
 });
