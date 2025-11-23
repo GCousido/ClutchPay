@@ -9,14 +9,13 @@ class Auth {
 
     async login(email, password) {
         
-        // Llamar al endpoint de NextAuth para credentials
-        // Primero obtenemos el CSRF token
+        // Obtain CSRF token first
         const csrfRes = await fetch(`${this.API_BASE_URL}/api/auth/csrf`, {
             credentials: 'include'
         });
         const { csrfToken } = await csrfRes.json();
         
-        // Ahora hacemos el login con el CSRF token
+        // Now we do the login with the CSRF token
         const response = await fetch(`${this.API_BASE_URL}/api/auth/callback/credentials`, {
             method: 'POST',
             headers: { 
@@ -32,17 +31,17 @@ class Auth {
             credentials: 'include'
         });
 
-        // Intentar parsear la respuesta como JSON
+        // Try to parse the response as JSON
         const result = await response.json();
 
-        // Si hay error en la respuesta
+        // If there is an error in the response
         if (result.error) {
             return { ok: false, error: 'Credenciales incorrectas' };
         }
 
-        // Si la respuesta indica éxito (tiene url de callback)
+        // If login was successful
         if (result.url || response.ok) {
-            // Verificar la sesión para confirmar
+            // Verify the session to confirm
             await new Promise(resolve => setTimeout(resolve, 100));
             const session = await this.checkSession();
             if (session) {
@@ -52,7 +51,7 @@ class Auth {
             }
         }
 
-        // Si llegamos aquí, el login falló
+        // If we reach here, login failed
         return { ok: false, error: 'Credenciales incorrectas' };
     }
 
@@ -139,6 +138,9 @@ class Auth {
         }
     }
 }
+
+
+
 
 
 

@@ -1,38 +1,140 @@
-<!doctype html>
+<!-- main.html -->
+<!DOCTYPE html>
 <html lang="es">
-
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Dashboard - ClutchPay</title>
-  <link rel="stylesheet" href="/CSS/style.css" />
-  <script src="/JS/i18n.js"></script>
-  <script src="/JS/auth.js"></script>
-  <script src="/JS/dashboard_usuario.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - ClutchPay</title>
+    <link rel="stylesheet" href="../css/dashboard_usuario.css">
+    <script src="../JS/i18n.js" defer></script>
+    <script src="../JS/auth.js" defer></script>
+    <script src="../JS/dashboard_usuario.js" defer></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Textos del dashboard
+            document.getElementById('edit-profile-btn').textContent = i18n.t('userDashboard.editProfile');
+            document.getElementById('logout-btn').textContent = i18n.t('userDashboard.logout');
+            document.getElementById('modal-title-edit').textContent = i18n.t('userDashboard.editProfileTitle');
+            document.getElementById('label-name').textContent = i18n.t('userDashboard.name');
+            document.getElementById('label-surnames').textContent = i18n.t('userDashboard.surnames');
+            document.getElementById('label-phone').textContent = i18n.t('userDashboard.phone');
+            document.getElementById('label-country').textContent = i18n.t('userDashboard.country');
+            document.getElementById('label-imageUrl').textContent = i18n.t('userDashboard.imageUrl');
+            document.getElementById('btn-save-changes').textContent = i18n.t('userDashboard.saveChanges');
+            document.getElementById('title-contacts').textContent = i18n.t('userDashboard.myContacts');
+            document.getElementById('add-contact-btn').textContent = i18n.t('userDashboard.addContact');
+            document.getElementById('loading-contacts').textContent = i18n.t('userDashboard.loading');
+            document.getElementById('modal-title-add-contact').textContent = i18n.t('userDashboard.addContactTitle');
+            document.getElementById('modal-description-contact').textContent = i18n.t('userDashboard.addContactDescription');
+            document.getElementById('label-contact-email').textContent = i18n.t('userDashboard.email');
+            document.getElementById('btn-add-contact').textContent = i18n.t('userDashboard.addButton');
+            document.getElementById('label-idiomas').textContent = i18n.t('general.languages');
+
+            // Selector de idiomas
+            const selectIdiomas = document.getElementById('idiomas');
+            selectIdiomas.innerHTML = '';
+            const idiomasDisponibles = ['es', 'en'];
+            idiomasDisponibles.forEach(lang => {
+                const option = document.createElement('option');
+                option.value = lang;
+                option.textContent = lang.toUpperCase();
+                selectIdiomas.appendChild(option);
+            });
+            selectIdiomas.value = i18n.currentLang;
+
+            selectIdiomas.addEventListener('change', (e) => {
+                i18n.setLanguage(e.target.value);
+                location.reload();
+            });
+        });
+    </script>
 </head>
-
 <body>
-  <div class="dashboard">
-    <aside class="user-sidebar">
-      <div class="user-profile">
-        <img id="profile-pic" alt="Foto de perfil" class="profile-pic" />
-        <h2 id="user-name">Cargando...</h2>
-      </div>
-      <nav class="user-nav">
-        <a href="/friends.html" class="nav-link">👥 Amigos</a>
-        <button id="edit-profile-btn" class="btn-icon" title="Editar perfil">
-          <img src="/imagenes/edit.svg" alt="Editar" />
-        </button>
-        <button id="logout-btn" class="btn-icon" title="Cerrar sesión">
-          <img src="/imagenes/logout.svg" alt="Salir" />
-        </button>
-      </nav>
-    </aside>
-    <main class="dashboard-main">
-      <h2>¡Bienvenido a ClutchPay! 🎉</h2>
-      <p>Tu panel de control está listo. Desde aquí podrás gestionar tus contactos, realizar pagos y mucho más.</p>
-    </main>
-  </div>
-</body>
+    <main>
+        <!-- Selector de idiomas -->
+        <div class="footer-box">
+            <img src="../imagenes/globe.svg" alt="Idiomas" class="globe-icon" />
+            <span id="label-idiomas" class="footer-label"></span>
+            <select id="idiomas" class="footer-select" name="idiomas"></select>
+        </div>
 
+        <div class="dashboard-container">
+            <!-- Sidebar izquierdo: Perfil + Contactos -->
+            <aside class="sidebar">
+                <!-- Perfil de usuario -->
+                <div class="profile-card">
+                    <img src="../imagenes/avatar-default.svg" alt="Profile Picture" id="profile-pic" class="profile-pic">
+                    <h2 id="user-name">Usuario</h2>
+                    <div class="profile-buttons">
+                        <button id="edit-profile-btn" class="btn btn-primary"></button>
+                        <button id="logout-btn" class="btn btn-secondary"></button>
+                    </div>
+                </div>
+
+                <!-- Sección de contactos -->
+                <div class="contacts-section">
+                    <div class="contacts-header">
+                        <h2 id="title-contacts"></h2>
+                        <button id="add-contact-btn" class="btn btn-primary"></button>
+                    </div>
+                    
+                    <div id="contacts-list" class="contacts-list">
+                        <div class="loading" id="loading-contacts"></div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Área principal central -->
+            <main class="main-content">
+                <div class="content-placeholder">
+                    <h1>ClutchPay</h1>
+                </div>
+            </main>
+        </div>
+
+        <!-- Modal editar perfil -->
+        <div id="edit-profile-modal" class="modal">
+            <div class="modal-content">
+                <span id="close-modal" class="close">&times;</span>
+                <h2 id="modal-title-edit"></h2>
+                <form id="edit-profile-form">
+                    <label for="name" id="label-name"></label>
+                    <input type="text" id="name" name="name">
+
+                    <label for="surnames" id="label-surnames"></label>
+                    <input type="text" id="surnames" name="surnames">
+
+                    <label for="phone" id="label-phone"></label>
+                    <input type="text" id="phone" name="phone">
+
+                    <label for="country" id="label-country"></label>
+                    <input type="text" id="country" name="country">
+
+                    <label for="imageUrl" id="label-imageUrl"></label>
+                    <input type="text" id="imageUrl" name="imageUrl">
+
+                    <button type="submit" class="btn btn-primary" id="btn-save-changes"></button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Modal añadir contacto -->
+        <div id="add-contact-modal" class="modal">
+            <div class="modal-content">
+                <span id="close-contact-modal" class="close">&times;</span>
+                <h2 id="modal-title-add-contact"></h2>
+                <p class="modal-description" id="modal-description-contact"></p>
+                <form id="add-contact-form">
+                    <label for="contact-email" id="label-contact-email"></label>
+                    <input 
+                        type="email" 
+                        id="contact-email" 
+                        required
+                        autocomplete="off">
+                    <button type="submit" class="btn btn-primary" id="btn-add-contact"></button>
+                </form>
+            </div>
+        </div>
+    </main>
+</body>
 </html>
