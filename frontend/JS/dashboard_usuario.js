@@ -208,8 +208,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const contactId = parseInt(e.currentTarget.dataset.contactId);
                 const contact = contactsList.find(c => c.id === contactId);
                 const contactName = contact ? `${contact.name} ${contact.surnames || ''}` : 'este contacto';
-
-                if (confirm(`¿Estás seguro de que quieres eliminar a ${contactName}?`)) {
+                if (confirm(`¿Estás seguro de que deseas eliminar a ${contactName} de tus contactos?`)) {
                     await deleteContact(contactId);
                 }
             });
@@ -295,10 +294,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function deleteContact(contactId) {
         try {
             const res = await fetch(
-                `${authInstance.API_BASE_URL}/api/users/${currentUser.id}/contacts?contactId=${contactId}`, 
+                `${authInstance.API_BASE_URL}/api/users/${currentUser.id}/contacts`, 
                 {
                     method: 'DELETE',
-                    credentials: 'include'
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ contactId })
                 }
             );
 
@@ -318,7 +319,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Load contacts on start
     loadContacts();
-
 });
 
 

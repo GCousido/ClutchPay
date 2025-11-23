@@ -93,9 +93,9 @@ export async function DELETE(request: Request) {
     requireSameUser(sessionUser.id, userId);
 
     const body = await request.json();
-    const { contactId } = body;
+    const contactId = Number(body.contactId);
 
-    if (!contactId || typeof contactId !== 'number') {
+    if (!contactId || Number.isNaN(contactId)) {
       return NextResponse.json({ message: 'contactId is required and must be a number' }, { status: 400 });
     }
 

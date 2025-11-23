@@ -121,7 +121,7 @@ class Auth {
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: new URLSearchParams({ 
                     csrfToken,
-                    callbackUrl: 'http://localhost:5050/index.html' 
+                    callbackUrl: 'http://localhost:80/index.html' 
                 }),
                 credentials: 'include',
             });
@@ -140,20 +140,3 @@ class Auth {
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-<<<<<<< HEAD
-
-=======
->>>>>>> refs/remotes/origin/production
