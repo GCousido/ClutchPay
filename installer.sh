@@ -289,7 +289,7 @@ if ! command -v docker &> /dev/null; then
         
         # Activate the docker group immediately without logout
         log_info "Activating docker group for current session..."
-        exec sg docker "$SCRIPT_PATH $*"
+        exec sudo -u $USER bash -c "SCRIPT_PATH='$SCRIPT_PATH' bash '$SCRIPT_PATH' $*"
     fi
     
     log_success "Docker installed and started"
@@ -315,7 +315,7 @@ else
             
             # Activate the docker group immediately without logout
             log_info "Activating docker group for current session..."
-            exec sg docker "$SCRIPT_PATH $*"
+            exec sudo -u $USER bash -c "SCRIPT_PATH='$SCRIPT_PATH' bash '$SCRIPT_PATH' $*"
         fi
     fi
 fi
