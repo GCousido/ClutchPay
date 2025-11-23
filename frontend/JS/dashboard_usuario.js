@@ -122,7 +122,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ========== Section for Contacts ==========
 
     let contactsList = [];
-    let deletedContactsSession = new Set(); // Store deleted IDs in this session
 
     // Helper function: find user by email so we can search by it
     async function findUserByEmail(email) {
@@ -156,11 +155,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (res.ok) {
                 const response = await res.json();
-                // Filter out contacts deleted in this session
-                //FIXME: MACARRADA PORQUE BACK NO SOPORTA DELETE CONTACTS, ES UNA SOLUCION TEMPORAL, SI SE ACTUALIZA VUELVE A APARECER
-                contactsList = (response.data || []).filter(contact =>
-                    !deletedContactsSession.has(contact.id)
-                );
+                contactsList = response.data || [];
                 renderContacts();
             } else {
                 showErrorMessage('Error al cargar contactos');
@@ -215,7 +210,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const contactName = contact ? `${contact.name} ${contact.surnames || ''}` : 'este contacto';
 
                 if (confirm(`¿Estás seguro de que quieres eliminar a ${contactName}?`)) {
-                    deleteContactLocal(contactId);
+                    await deleteContact(contactId);
                 }
             });
         });
@@ -272,11 +267,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
 
-            // If it was deleted in this session, remove it from the Set
-            if (deletedContactsSession.has(userToAdd.id)) {
-                deletedContactsSession.delete(userToAdd.id);
-            }
-
             // 3. Add the contact
             const res = await fetch(`${authInstance.API_BASE_URL}/api/users/${currentUser.id}/contacts`, {
                 method: 'POST',
@@ -301,18 +291,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // Delete contact (frontend only - temporary)
-    function deleteContactLocal(contactId) {
-        // Add to the list of deleted contacts in this session
-        deletedContactsSession.add(contactId);
+    // Delete contact (calls backend API)
+    async function deleteContact(contactId) {
+        try {
+            const res = await fetch(
+                `${authInstance.API_BASE_URL}/api/users/${currentUser.id}/contacts?contactId=${contactId}`, 
+                {
+                    method: 'DELETE',
+                    credentials: 'include'
+                }
+            );
 
-        // Filter from the current list
-        contactsList = contactsList.filter(c => c.id !== contactId);
-
-        // render again
-        renderContacts();
-
-        showSuccessMessage('Contacto eliminado correctamente');
+            if (res.ok) {
+                showSuccessMessage('Contacto eliminado correctamente');
+                // Reload contacts to reflect the change
+                await loadContacts();
+            } else {
+                const data = await res.json();
+                showErrorMessage(data.message || 'Error al eliminar contacto');
+            }
+        } catch (error) {
+            console.error('Error deleting contact:', error);
+            showErrorMessage('Error al eliminar contacto');
+        }
     }
 
     // Load contacts on start
