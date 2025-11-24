@@ -1,176 +1,317 @@
-# Development Utils 🛠️
+# Development Utilities
 
-Utility tools and scripts for PDP-Pasarela development.
+Utility tools and scripts for ClutchPay development and testing. This directory contains automation scripts, test utilities, and development helpers to streamline the development workflow.
 
 ---
 
-## 📁 Files in this Folder
+## 📋 Overview
 
-### 🔧 `setup_dev_env.ps1`
+We provide different development tools:
 
-**Development Environment Setup Script**
+- **Automated Environment Setup**: One-command development environment configuration
+- **Database Seeding**: Test data generation for development
+- **Test Coverage Tools**: Coverage report generation and conversion
+- **Development Documentation**: Comprehensive testing documentation
 
-Automated PowerShell script that configures the complete development environment. Performs the following operations:
+---
 
-#### Features
+## 📁 Directory Contents
 
-- ✅ **System Requirements Validation**
-  - Verifies Node.js (minimum v20.9.0)
-  - Verifies Docker and Docker Compose
-  - Verifies and installs pnpm if necessary
+### 🔧 Core Scripts
 
-- 🔌 **Port Configuration**
-  - Backend API (default: 3000)
-  - Frontend (default: 80)
+#### `setup_dev_env.ps1`
 
-- 📦 **Dependency Installation**
-  - Installs backend dependencies with pnpm
-  - Creates/updates `.env` file with automatic configuration
+##### **Automated Development Environment Setup Script**
 
-- 🐳 **Docker Container Initialization**
-  - PostgreSQL (database)
-  - Frontend container
+A comprehensive PowerShell script that automates the entire development environment setup process from scratch.
 
-- 🗄️ **Database Configuration**
-  - Executes Prisma migrations
-  - Generates Prisma client
-  - Optionally executes database seeding
+**Features:**
 
-- 🚀 **Development Server Startup**
-  - Frees port if in use
-  - Starts Next.js on configured port
+1. **System Requirements Validation**
+   - ✅ Verifies Node.js >= 20.9.0
+   - ✅ Checks Docker installation and daemon status
+   - ✅ Validates Docker Compose availability
+   - ✅ Auto-installs pnpm if missing
 
-#### How to Run
+2. **Interactive Port Configuration**
+   - Backend API port (default: 3000)
+   - Frontend port (default: 80)
+   - Automatic port conflict detection
+
+3. **Dependency Management**
+   - Installs backend dependencies with pnpm
+   - Handles path navigation for any execution location
+   - Uses frozen lockfile for consistency
+
+4. **Environment Configuration**
+   - Creates `.env` files automatically
+   - Generates cryptographically secure secrets
+   - Configures database connection strings
+   - Sets up NextAuth and JWT secrets
+
+5. **Docker Container Setup**
+   - PostgreSQL database container
+   - Frontend container
+   - User confirmation before initialization
+   - Health checks and automatic startup
+
+6. **Database Initialization**
+   - Runs Prisma migrations
+   - Generates Prisma Client
+   - Optional database seeding
+   - Automatic cleanup of temporary files
+
+7. **Development Server Launch**
+   - Port conflict resolution
+   - Process termination if needed
+   - Custom port configuration
+   - Automatic server startup
+
+**Usage:**
 
 ```powershell
-# If execution policies prevent running:
+# Run from project root
+.\utils_dev\setup_dev_env.ps1
+
+# Or from utils_dev directory
+cd utils_dev
+.\setup_dev_env.ps1
+```
+
+**Requirements:**
+
+- Windows PowerShell 5.1+
+- Administrator privileges (for Docker operations)
+- Internet connection (for package installation)
+
+**Execution Policy:**
+
+```powershell
+# If script execution is blocked
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\setup_dev_env.ps1
 ```
 
 ---
 
-### 🌱 `seed.ts`
+#### `seed.ts`
 
-**Database Seeding Script**
+##### **Database Seeding Script**
 
-TypeScript script that generates realistic test data for development.
+TypeScript script for populating the database with test data during development.
 
-#### Generated Data
+**Features:**
 
-- 👥 **40 Users** with varied information
-  - Unique emails
-  - Passwords hashed with bcrypt
-  - European phone numbers (50% of the time)
-  - ISO country codes (30% of the time)
-  - Avatars (20% of the time)
+- Creates sample users
+- Generates test invoices
+- Creates payment records
+- Establishes user relationships
+- Idempotent execution (safe to run multiple times)
 
-- 📄 **160+ Invoices** (0-8 per user)
-  - Formatted invoice numbers (INV-YYYY-XXXXXX)
-  - Amounts between $100-$5000
-  - Statuses: PENDING, PAID, OVERDUE
+**Usage:**
 
-- 💳 **120+ Payments** (75-85% of invoices paid)
-  - Methods: PayPal, Visa, Mastercard, Other
-  - Unique references
-  - Realistic dates
-
-- 🤝 **Contact Relationships** (based on invoices)
-  - Automatic linking between users who have interacted
-  - 2-8 contacts per user
-
-- 🔔 **350+ Notifications**
-  - INVOICE_ISSUED - when invoice is created
-  - PAYMENT_RECEIVED - when invoice is paid
-  - PAYMENT_DUE - 7 days before due date
-  - PAYMENT_OVERDUE - when invoice is overdue
-
-#### Features
-
-- Cleans existing data before execution
-- Generates varied and realistic data
-- Logical relationships between data
-- Detailed summary upon completion
-
----
-
-### 📖 `README.md`
-
-**This file** - Development tools documentation
-
----
-
-## 🚀 Typical Usage Flow
-
-1. **Initial setup:**
-   ```powershell
-   .\setup_dev_env.ps1
-   ```
-
-2. **The script automatically:**
-   - ✅ Validates system requirements
-   - ✅ Configures ports (interactive)
-   - ✅ Installs dependencies
-   - ✅ Creates `.env` file
-   - ✅ Starts Docker containers
-   - ✅ Executes database migrations
-   - ✅ Optionally executes seeding
-   - ✅ Starts development server
-
-3. **Access at:**
-   - Backend API: `http://localhost:3000` (or configured port)
-   - Frontend: `http://localhost:80` (or configured port)
-   - PostgreSQL: `localhost:5432`
-
----
-
-## 📋 Prerequisites
-
-- **PowerShell 5.1+**
-- **Node.js 20.9.0+** - [Download](https://nodejs.org/)
-- **Docker Desktop** - [Download](https://www.docker.com/products/docker-desktop/)
-- **Docker Compose** - (included in Docker Desktop)
-
----
-
-## 🔧 Generated Configuration Files
-
-### `back/.env`
-
-Backend configuration:
-
-```env
-POSTGRES_DB=clutchpay_db
-POSTGRES_USER=clutchpay_user
-POSTGRES_PASSWORD=clutchpay_pass
-DATABASE_URL=postgresql://...
-NEXT_PUBLIC_API_URL=http://localhost:3000
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=your-secret-key
+```bash
+# Run from backend directory
+cd back
+npx tsx ../utils_dev/seed.ts
 ```
 
-### `frontend/.env`
+**Automatic Usage:**
+The `setup_dev_env.ps1` script automatically runs this during setup and cleans up the temporary file afterward.
 
-Frontend configuration:
+---
 
-```env
-API_BASE_URL=http://localhost:3000
-FRONTEND_PORT=80
+## Utilies in different folders
+
+### 📊 Coverage Tools
+
+#### `generate-coverage-report.js`
+
+##### **Test Coverage Markdown Generator**
+
+Node.js script that generates a comprehensive Markdown report from Vitest coverage data.
+
+**Features:**
+
+- Parses coverage JSON data
+- Generates detailed coverage tables
+- Creates summary statistics
+- Outputs formatted Markdown
+
+**Output:**
+
+Creates `coverage-report.md` with:
+
+- Overall coverage percentage
+- Per-file coverage breakdown
+- Uncovered lines identification
+- Coverage trends
+
+---
+
+#### `coverage-md-to-pdf.mjs`
+
+##### **Coverage Report PDF Converter**
+
+ES Module script that converts Markdown coverage reports to PDF format.
+
+**Features:**
+
+- Markdown to PDF conversion
+- Formatted tables and styling
+- Syntax highlighting for code
+- Professional report layout
+
+**Requirements:**
+
+- `markdown-pdf` or similar converter
+- Input: `coverage-report.md`
+- Output: `coverage-report.pdf`
+
+**Usage to generate the report:**
+
+```bash
+pnpm coverage:all
 ```
 
 ---
 
-## 📊 Test Data Statistics
+## 🚀 Quick Start Guide
 
-When running `seed.ts`:
+### First-Time Setup
 
-| Element | Quantity | Description |
-|---------|----------|-------------|
-| Users | 40 | With variety of optional data |
-| Invoices | ~160 | Distributed among users |
-| Payments | ~120 | 75-85% of invoices paid |
-| Contacts | Variable | 2-8 per user |
-| Notifications | ~350 | 4 different types |
+#### **Step 1: Run automated setup**
+
+```powershell
+.\utils_dev\setup_dev_env.ps1
+```
+
+#### **Step 2: Verify installation**
+
+- Backend: `http://localhost:3000`
+- Frontend: `http://localhost:80`
+- Database: `localhost:5432`
+
+#### **Step 3: Run tests**
+
+```bash
+cd back
+pnpm run test
+```
+
+---
+
+## 🔧 Manual Setup (Alternative)
+
+If you prefer manual setup or the script fails:
+
+### 1. System Validation
+
+```powershell
+# Check Node.js
+node --version  # Should be >= 20.9.0
+
+# Check Docker
+docker --version
+docker-compose --version
+
+# Install pnpm
+npm install -g pnpm
+```
+
+### 2. Backend Setup
+
+```bash
+cd back
+pnpm install
+# Edit .env with your configuration
+```
+
+### 3. Database Setup
+
+```bash
+cd docker
+docker-compose up -d
+cd ..
+pnpm exec prisma migrate dev
+pnpm exec prisma generate
+```
+
+### 4. Seed Database
+
+```bash
+npx tsx ../utils_dev/seed.ts
+```
+
+### 5. Start Development
+
+```bash
+pnpm run dev
+```
+
+---
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**Script execution blocked:**
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+**PowerShell version too old:**
+
+```powershell
+# Check version
+$PSVersionTable.PSVersion
+# Upgrade to PowerShell 5.1 or later
+```
+
+**Docker not running:**
+
+```bash
+# Windows: Start Docker Desktop
+# Linux: sudo systemctl start docker
+```
+
+**Port already in use:**
+
+```powershell
+# Find process using port 3000
+netstat -ano | findstr :3000
+# Kill process by PID
+taskkill /PID <PID> /F
+```
+
+**pnpm installation fails:**
+
+```bash
+# Install globally with npm
+npm install -g pnpm
+
+# Verify installation
+pnpm --version
+```
+
+**Prisma migration errors:**
+
+```bash
+# Reset database
+pnpm exec prisma migrate reset
+
+# Regenerate client
+pnpm exec prisma generate
+```
+
+---
+
+## 📚 Additional Resources
+
+- **Main Documentation**: [../README.md](../README.md)
+- **Backend Documentation**: [../back/README.md](../back/README.md)
+- **Frontend Documentation**: [../frontend/README.md](../frontend/README.md)
 
 ---
 
@@ -178,31 +319,4 @@ When running `seed.ts`:
 
 - The script **will delete the existing database** during migrations
 - Seeding data is **fictional and for development only**
-- Changing `NEXTAUTH_SECRET` in production is **mandatory**
 - The script **automatically handles port conflicts**
-- **Frontend environment variables** are read from `.env`
-
----
-
-## 🆘 Troubleshooting
-
-**Port in use:**
-- The script automatically detects and frees ports in use
-
-**Docker won't start:**
-- Ensure Docker Desktop is running
-- Verify you have sufficient permissions
-
-**Migrations fail:**
-- Remove Docker containers: `docker-compose down`
-- Restart: `.\setup_dev_env.ps1`
-
-**Seeding fails:**
-- Ensure PostgreSQL is running
-- Verify credentials in `.env`
-
----
-
-## 📝 Last Updated
-
-**November 24, 2025**
