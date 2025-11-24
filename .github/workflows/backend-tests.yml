@@ -42,17 +42,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+      
       - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'pnpm'
           cache-dependency-path: back/pnpm-lock.yaml
-      
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 8
       
       - name: Install dependencies
         working-directory: ./back
@@ -115,17 +115,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+      
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22.x
           cache: 'pnpm'
           cache-dependency-path: back/pnpm-lock.yaml
-      
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 8
       
       - name: Install dependencies
         working-directory: ./back
