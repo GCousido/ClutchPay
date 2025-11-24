@@ -76,6 +76,64 @@ export async function GET(request: Request) {
   }
 }
 
+export async function DELETE(request: Request) {
+  try {
+    const sessionUser = await requireAuth();
+
+    const url = new URL(request.url);
+    const m = url.pathname.match(/\/api\/users\/(\d+)\/contacts\/?$/);
+    if (!m) {
+      return NextResponse.json({ message: 'Invalid user id in path' }, { status: 400 });
+    }
+    const userId = Number(m[1]);
+    if (Number.isNaN(userId)) {
+      return NextResponse.json({ message: 'Invalid user id' }, { status: 400 });
+    }
+
+    requireSameUser(sessionUser.id, userId);
+
+    const body = await request.json();
+    const contactId = Number(body.contactId);
+
+    if (!contactId || Number.isNaN(contactId)) {
+      return NextResponse.json({ message: 'contactId is required and must be a number' }, { status: 400 });
+    }
+
+    if (contactId === userId) {
+      return NextResponse.json({ message: 'Cannot remove yourself as a contact' }, { status: 400 });
+    }
+
+    // Check if contact relationship exists
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: {
+        contacts: {
+          where: { id: contactId },
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!user || user.contacts.length === 0) {
+      return NextResponse.json({ message: 'Contact not found' }, { status: 404 });
+    }
+
+    // Disconnect the contact
+    await db.user.update({
+      where: { id: userId },
+      data: {
+        contacts: {
+          disconnect: { id: contactId },
+        },
+      },
+    });
+
+    return NextResponse.json({ message: 'Contact removed successfully' }, { status: 200 });
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const sessionUser = await requireAuth();

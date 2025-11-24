@@ -38,7 +38,6 @@ document.addEventListener('DOMContentLoaded', function () {
             password: document.getElementById('password').value,
             phone: document.getElementById('phone').value.trim(),
             country: countrySelect ? countrySelect.value : undefined,
-            imageUrl: document.getElementById('imageUrl').value.trim() || undefined,
         };
 
         try {
