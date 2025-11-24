@@ -62,7 +62,7 @@ jobs:
         shell: bash
         working-directory: ./back
         run: |
-          cat > .env.test << EOF
+          cat > .env << EOF
           DATABASE_URL=postgresql://clutchpay_test_user:clutchpay_test_pass@localhost:5432/clutchpay_test_db?schema=public
           NEXTAUTH_URL=http://localhost:3000
           NEXTAUTH_SECRET=test-secret-key-for-ci-cd-testing-only
