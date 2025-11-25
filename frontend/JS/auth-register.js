@@ -37,7 +37,7 @@ document.addEventListener('DOMContentLoaded', function () {
             email: document.getElementById('email').value.trim(),
             password: document.getElementById('password').value,
             phone: document.getElementById('phone').value.trim(),
-            country: countrySelect ? countrySelect.value : undefined
+            country: countrySelect ? countrySelect.value : undefined,
         };
 
         try {
@@ -45,13 +45,13 @@ document.addEventListener('DOMContentLoaded', function () {
             if (ok) {
                 window.location.href = '../login.html';
             } else {
-                showErrorMessage(error);
+                alert(error);
                 submitBtn.disabled = false;
                 submitBtn.textContent = originalText;
             }
         } catch (error) {
             console.error('Error:', error);
-            showErrorMessage(i18n.t('general.connectionError'));
+            alert(i18n.t('general.connectionError'));
             submitBtn.disabled = false;
             submitBtn.textContent = originalText;
         }
