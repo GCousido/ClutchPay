@@ -71,5 +71,51 @@ export function extractPublicId(url: string): string | null {
   }
 }
 
+/**
+ * Upload a PDF to Cloudinary
+ * @param base64Pdf - Base64 encoded PDF string (with data:application/pdf prefix)
+ * @param folder - Cloudinary folder path (default: 'ClutchPay/invoices')
+ * @returns Upload result with secure_url and public_id
+ */
+export async function uploadPdf(base64Pdf: string, folder = 'ClutchPay/invoices') {
+  try {
+    const result = await cloudinary.uploader.upload(base64Pdf, {
+      folder,
+      resource_type: 'raw',
+      format: 'pdf',
+    });
+
+    return {
+      url: result.secure_url,
+      publicId: result.public_id,
+    };
+  } catch (error) {
+    console.error('Cloudinary PDF upload error:', error);
+    throw new Error('Failed to upload PDF to Cloudinary');
+  }
+}
+
+/**
+ * Delete a PDF from Cloudinary
+ * @param publicId - Public ID of the PDF to delete
+ * @returns Deletion result
+ */
+export async function deletePdf(publicId: string) {
+  try {
+    const result = await cloudinary.uploader.destroy(publicId, {
+      resource_type: 'raw',
+    });
+    
+    if (result.result !== 'ok' && result.result !== 'not found') {
+      throw new Error(`Failed to delete PDF: ${result.result}`);
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Cloudinary PDF delete error:', error);
+    throw new Error('Failed to delete PDF from Cloudinary');
+  }
+}
+
 export { cloudinary };
 
