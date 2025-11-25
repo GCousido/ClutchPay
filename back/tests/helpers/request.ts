@@ -1,4 +1,6 @@
 import { clearMockSession, setMockSession } from '../setup';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 // Helper para crear Request objects en tests
 export function createRequest(
@@ -81,7 +83,8 @@ export async function testApiHandler(options: {
   const apiPath = url.replace('/api/', '').split('?')[0]; // Remove query params
   const pathSegments = apiPath.split('/');
   
-  let routePath = 'c:\\Users\\guill\\Documents\\4 - PDP\\back\\src\\app\\api';
+  // Build path segments array
+  const pathParts = [];
   
   for (let i = 0; i < pathSegments.length; i++) {
     const segment = pathSegments[i];
@@ -89,13 +92,19 @@ export async function testApiHandler(options: {
     // Check if this segment is a numeric ID (dynamic parameter)
     if (/^\d+$/.test(segment)) {
       params.id = segment;
-      routePath += '\\[id]';
+      pathParts.push('[id]');
     } else {
-      routePath += `\\${segment}`;
+      pathParts.push(segment);
     }
   }
   
-  routePath += '\\route.ts';
+  pathParts.push('route.ts');
+  
+  // Construct absolute path using path.join for cross-platform compatibility
+  // Navigate from tests/helpers to src/app/api
+  const testDir = path.dirname(fileURLToPath(import.meta.url));
+  const srcDir = path.resolve(testDir, '..', '..', 'src', 'app', 'api');
+  const routePath = path.join(srcDir, ...pathParts);
 
   // Dynamically import the route handler
   const routeModule = await import(routePath);

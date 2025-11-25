@@ -41,7 +41,7 @@ describe('Cloudinary Image Management', () => {
       expect(cloudinary.uploader.upload).toHaveBeenCalledWith(
         base64Image,
         expect.objectContaining({
-          folder: 'clutchpay/profile-images',
+          folder: 'ClutchPay/profile_images',
           resource_type: 'image',
           transformation: [
             { width: 500, height: 500, crop: 'fill', gravity: 'center' },
