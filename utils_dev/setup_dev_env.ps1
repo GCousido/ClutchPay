@@ -327,6 +327,13 @@ NEXTAUTH_SECRET=$NextAuthKey
 JWT_SECRET=$JWTKey
 
 # ============================================================================
+# Cloudinary Configuration (configure with your own credentials)
+# ============================================================================
+NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=<your_cloud_name>
+NEXT_PUBLIC_CLOUDINARY_API_KEY=<your_api_key>
+CLOUDINARY_API_SECRET=<your_api_secret>
+
+# ============================================================================
 # Port Configuration
 # ============================================================================
 BACKEND_PORT=$backendPort
