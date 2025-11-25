@@ -1,6 +1,6 @@
-import { clearMockSession, setMockSession } from '../setup';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { clearMockSession, setMockSession } from '../setup';
 
 // Helper para crear Request objects en tests
 export function createRequest(
