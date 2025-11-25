@@ -22,6 +22,9 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+
+
+    //PRUEBA -- TODO:BORRAR DESPUES
     // --- Submit del registro ---
     form.addEventListener('submit', async function (e) {
         e.preventDefault();
