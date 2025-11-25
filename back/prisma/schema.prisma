@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                Int       @id @default(autoincrement())
+  email             String    @unique
+  password          String    @db.VarChar(255)
+  name              String
+  surnames          String
+  phone             String?   @db.VarChar(20)
+  country           String?
+  imageUrl          String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  issuedInvoices    Invoice[] @relation("IssuerUser")
+  owedInvoices      Invoice[] @relation("DebtorUser")
+
+  // Reflexive Many-to-Many for Contacts
+  contacts     User[] @relation("UserContacts")
+  contactOf    User[] @relation("UserContacts")
+
+  notifications  Notification[]
+
+  @@map("users")
+}
+
+model Invoice {
+  id                Int       @id @default(autoincrement())
+  invoiceNumber     String    @unique
+  issuerUserId      Int
+  debtorUserId      Int
+  subject           String    @db.Text
+  description       String    @db.Text
+  amount            Decimal   @db.Decimal(10, 2)
+  status            InvoiceStatus @default(PENDING)
+  issueDate         DateTime  
+  dueDate           DateTime?
+  invoicePdfUrl     String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  issuerUser        User      @relation("IssuerUser", fields: [issuerUserId], references: [id])
+  debtorUser        User      @relation("DebtorUser", fields: [debtorUserId], references: [id])
+
+  payment          Payment?
+  notifications  Notification[]
+
+  @@index([issuerUserId])
+  @@index([debtorUserId])
+  @@map("invoices")
+}
+
+model Payment {
+  id                Int       @id @default(autoincrement())
+  invoiceId         Int       @unique
+  paymentDate       DateTime
+  paymentMethod     PaymentMethod
+  paymentReference  String?
+  receiptPdfUrl     String
+  subject           String?   @db.Text
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  invoice           Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@index([invoiceId])
+  @@map("payments")
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  invoiceId Int
+  type      NotificationType
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+}
+
+// Enums
+enum InvoiceStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELED
+}
+
+enum PaymentMethod {
+  PAYPAL
+  VISA
+  MASTERCARD
+  OTHER
+}
+
+enum NotificationType {
+  INVOICE_ISSUED          // A new invoice has been issued to the user
+  PAYMENT_DUE             // The payment deadline for an invoice is approaching
+  PAYMENT_OVERDUE         // The invoice is overdue and unpaid
+  PAYMENT_RECEIVED        // A payment has been received for an issued invoice
+  INVOICE_CANCELED        // The invoice has been canceled or voided
+}

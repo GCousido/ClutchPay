@@ -1,0 +1,14 @@
+services:
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "${FRONTEND_PORT:-5050}:80"
+    container_name: clutchpay-frontend
+    volumes:
+      - ../:/usr/local/apache2/htdocs/
+    restart: unless-stopped
+
+
+
