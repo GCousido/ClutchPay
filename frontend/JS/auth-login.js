@@ -29,13 +29,13 @@ document.addEventListener('DOMContentLoaded', function () {
 					errorMessage = error;
 				}
 
-				alert(errorMessage);
+				showErrorMessage(errorMessage);
 				submitBtn.disabled = false;
 				submitBtn.textContent = originalText;
 			}
 		} catch (error) {
 			console.error('Error:', error);
-			alert(i18n.t('general.connectionError'));
+			showErrorMessage(i18n.t('general.connectionError'));
 			submitBtn.disabled = false;
 			submitBtn.textContent = originalText;
 		}
