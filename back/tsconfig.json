@@ -28,16 +28,12 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    ".next/dev/types/**/*.ts",
+    "tests/**/*"
   ],
   "exclude": [
     "node_modules",
     "vitest.config.mts",
-    "tests",
     "coverage",
-    "**/*.test.ts",
-    "**/*.test.tsx",
-    "**/*.spec.ts",
-    "**/*.spec.tsx"
   ]
 }
