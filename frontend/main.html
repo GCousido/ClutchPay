@@ -1,139 +1,308 @@
 <!-- main.html -->
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - ClutchPay</title>
     <link rel="stylesheet" href="/CSS/dashboard_usuario.css">
+    <script src="../JS/theme.js"></script>
     <script src="../JS/i18n.js" defer></script>
     <script src="../JS/auth.js" defer></script>
     <script src="../JS/dashboard_usuario.js" defer></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // Textos del dashboard
-            document.getElementById('edit-profile-btn').textContent = i18n.t('userDashboard.editProfile');
-            document.getElementById('logout-btn').textContent = i18n.t('userDashboard.logout');
-            document.getElementById('modal-title-edit').textContent = i18n.t('userDashboard.editProfileTitle');
-            document.getElementById('label-name').textContent = i18n.t('userDashboard.name');
-            document.getElementById('label-surnames').textContent = i18n.t('userDashboard.surnames');
-            document.getElementById('label-phone').textContent = i18n.t('userDashboard.phone');
-            document.getElementById('label-country').textContent = i18n.t('userDashboard.country');
-            document.getElementById('label-imageUrl').textContent = i18n.t('userDashboard.imageUrl');
-            document.getElementById('btn-save-changes').textContent = i18n.t('userDashboard.saveChanges');
-            document.getElementById('title-contacts').textContent = i18n.t('userDashboard.myContacts');
-            document.getElementById('add-contact-btn').textContent = i18n.t('userDashboard.addContact');
-            document.getElementById('loading-contacts').textContent = i18n.t('userDashboard.loading');
-            document.getElementById('modal-title-add-contact').textContent = i18n.t('userDashboard.addContactTitle');
-            document.getElementById('modal-description-contact').textContent = i18n.t('userDashboard.addContactDescription');
-            document.getElementById('label-contact-email').textContent = i18n.t('userDashboard.email');
-            document.getElementById('btn-add-contact').textContent = i18n.t('userDashboard.addButton');
-            document.getElementById('label-idiomas').textContent = i18n.t('general.languages');
+            // Textos del dashboard - con verificación de existencia
+            const setTextIfExists = (id, text) => {
+                const element = document.getElementById(id);
+                if (element) element.textContent = text;
+            };
+
+            setTextIfExists('edit-profile-btn', i18n.t('userDashboard.editProfile'));
+            setTextIfExists('logout-btn', i18n.t('userDashboard.logout'));
+            setTextIfExists('modal-title-edit', i18n.t('userDashboard.editProfileTitle'));
+            setTextIfExists('label-name', i18n.t('userDashboard.name'));
+            setTextIfExists('label-surnames', i18n.t('userDashboard.surnames'));
+            setTextIfExists('label-phone', i18n.t('userDashboard.phone'));
+            setTextIfExists('label-country', i18n.t('userDashboard.country'));
+            setTextIfExists('label-imageUrl', i18n.t('userDashboard.imageUrl'));
+            setTextIfExists('btn-save-changes', i18n.t('userDashboard.saveChanges'));
+            setTextIfExists('add-contact-btn', i18n.t('userDashboard.addContact'));
+            setTextIfExists('modal-title-add-contact', i18n.t('userDashboard.addContactTitle'));
+            setTextIfExists('modal-description-contact', i18n.t('userDashboard.addContactDescription'));
+            setTextIfExists('label-contact-email', i18n.t('userDashboard.email'));
+            setTextIfExists('btn-add-contact', i18n.t('userDashboard.addButton'));
+            setTextIfExists('label-idiomas', i18n.t('general.languages'));
+
+            // Aplicar traducciones usando data-i18n
+            document.querySelectorAll('[data-i18n]').forEach(element => {
+                const key = element.getAttribute('data-i18n');
+                element.textContent = i18n.t(key);
+            });
+
+            // Translate country select options
+            const countrySelect = document.getElementById('country');
+            if (countrySelect) {
+                countrySelect.querySelectorAll('option[value]:not([value=""])').forEach(option => {
+                    const countryCode = option.value;
+                    option.textContent = i18n.t(`country.countries.${countryCode}`);
+                });
+                // First option (empty)
+                const firstOption = countrySelect.querySelector('option[value=""]');
+                if (firstOption) {
+                    firstOption.textContent = i18n.t('country.selectCountry');
+                }
+            }
+
+            // Mobile buttons translations
+            setTextIfExists('edit-profile-btn-mobile', i18n.t('userDashboard.editProfile'));
+            setTextIfExists('logout-btn-mobile', i18n.t('userDashboard.logout'));
+            setTextIfExists('add-contact-btn-mobile', i18n.t('userDashboard.addContact'));
 
             // Selector de idiomas
-            const selectIdiomas = document.getElementById('idiomas');
-            selectIdiomas.innerHTML = '';
-            const idiomasDisponibles = ['es', 'en'];
-            idiomasDisponibles.forEach(lang => {
-                const option = document.createElement('option');
-                option.value = lang;
-                option.textContent = lang.toUpperCase();
-                selectIdiomas.appendChild(option);
-            });
-            selectIdiomas.value = i18n.currentLang;
+            const selectIdiomas = document.getElementById('language-selector');
+            if (selectIdiomas) {
+                selectIdiomas.value = i18n.currentLang;
 
-            selectIdiomas.addEventListener('change', (e) => {
-                i18n.setLanguage(e.target.value);
-                location.reload();
-            });
+                selectIdiomas.addEventListener('change', (e) => {
+                    i18n.setLanguage(e.target.value);
+                    location.reload();
+                });
+            }
         });
     </script>
 </head>
+
 <body>
     <main>
-        <!-- Selector de idiomas -->
-        <div class="footer-box">
-            <img src="../imagenes/globe.svg" alt="Idiomas" class="globe-icon" />
-            <span id="label-idiomas" class="footer-label"></span>
-            <select id="idiomas" class="footer-select" name="idiomas"></select>
-        </div>
-
         <div class="dashboard-container">
-            <!-- Sidebar izquierdo: Perfil + Contactos -->
-            <aside class="sidebar">
-                <!-- Perfil de usuario -->
+            <!-- SIDEBAR  PC / HEADER phone -->
+            <aside class="sidebar" id="sidebar">
+                <!-- Profile Content -->
                 <div class="profile-card">
-                    <img src="../imagenes/avatar-default.svg" alt="Profile Picture" id="profile-pic" class="profile-pic">
-                    <h2 id="user-name">Usuario</h2>
-                    <div class="profile-buttons">
-                        <button id="edit-profile-btn" class="btn btn-primary"></button>
-                        <button id="logout-btn" class="btn btn-secondary"></button>
+                    <img src="../imagenes/avatar-default.svg" alt="Profile" class="profile-pic" id="profile-pic">
+                    <div class="profile-info">
+                        <h2 id="user-name"></h2>
+                        <p class="profile-email" id="user-email"></p>
                     </div>
                 </div>
 
-                <!-- Sección de contactos -->
-                <div class="contacts-section">
+                <!-- Menu button (phone) -->
+                <button class="menu-toggle" id="menu-toggle" aria-label="Menu">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </button>
+
+                <!-- Action buttons (desktop only) -->
+                <div class="profile-actions desktop-only">
+                    <button class="btn btn-primary" id="edit-profile-btn" data-i18n="userDashboard.editProfile"></button>
+                    <button class="btn btn-secondary" id="logout-btn" data-i18n="userDashboard.logout"></button>
+                </div>
+
+                <!-- Contacts section (desktop only) -->
+                <div class="contacts-section desktop-only">
                     <div class="contacts-header">
-                        <h2 id="title-contacts"></h2>
-                        <button id="add-contact-btn" class="btn btn-primary"></button>
+                        <h2 data-i18n="userDashboard.myContacts"></h2>
+                        <button class="btn btn-primary btn-small" id="add-contact-btn" data-i18n="userDashboard.addContact">+</button>
                     </div>
-                    
-                    <div id="contacts-list" class="contacts-list">
-                        <div class="loading" id="loading-contacts"></div>
+                    <div class="contacts-list" id="contacts-list">
+                        <p class="loading" data-i18n="userDashboard.loading"></p>
                     </div>
                 </div>
             </aside>
 
-            <!-- Área principal central -->
-            <main class="main-content">
-                <div class="content-placeholder">
-                    <h1>ClutchPay</h1>
+            <!-- MOBILE DROPDOWN MENU -->
+            <div class="mobile-menu" id="mobile-menu">
+                <div class="mobile-menu-content">
+                    <!-- Mobile buttons -->
+                    <button class="btn btn-primary" id="edit-profile-btn-mobile" data-i18n="userDashboard.editProfile"></button>
+                    <button class="btn btn-secondary" id="logout-btn-mobile" data-i18n="userDashboard.logout"></button>
+                    
+                    <!-- Mobile Contacts -->
+                    <div class="contacts-section">
+                        <div class="contacts-header">
+                            <h2 data-i18n="userDashboard.myContacts"></h2>
+                            <button class="btn btn-primary btn-small" id="add-contact-btn-mobile" data-i18n="userDashboard.addContact">+</button>
+                        </div>
+                        <div class="contacts-list" id="contacts-list-mobile">
+                            <p class="loading" data-i18n="userDashboard.loading"></p>
+                        </div>
+                    </div>
                 </div>
-            </main>
+            </div>
+
+            <!-- CONTENIDO PRINCIPAL -->
+            <div class="main-content">
+                <div class="invoices-header">
+                    <h1 data-i18n="invoices.title">Mis Facturas</h1>
+                    <div class="invoices-filters">
+                        <button class="filter-btn active" data-filter="all" data-i18n="invoices.filterAll">Todas</button>
+                        <button class="filter-btn" data-filter="pending" data-i18n="invoices.filterPending">Pendientes</button>
+                        <button class="filter-btn" data-filter="paid" data-i18n="invoices.filterPaid">Pagadas</button>
+                    </div>
+                </div>
+                
+                <div class="invoices-grid" id="invoices-grid">
+                    <!-- Las facturas se cargarán dinámicamente aquí -->
+                    <div class="loading-spinner">
+                        <div class="spinner"></div>
+                        <p data-i18n="invoices.loading">Cargando facturas...</p>
+                    </div>
+                </div>
+
+                <div class="empty-invoices" id="empty-invoices" style="display: none;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="12" y1="18" x2="12" y2="12"/>
+                        <line x1="9" y1="15" x2="15" y2="15"/>
+                    </svg>
+                    <h3 data-i18n="invoices.noInvoices">No tienes facturas</h3>
+                    <p data-i18n="invoices.noInvoicesDesc">Cuando recibas o emitas facturas, aparecerán aquí</p>
+                </div>
+            </div>
         </div>
 
-        <!-- Modal editar perfil -->
+        <!-- MODAL EDITAR PERFIL -->
         <div id="edit-profile-modal" class="modal">
             <div class="modal-content">
-                <span id="close-modal" class="close">&times;</span>
-                <h2 id="modal-title-edit"></h2>
+                <span class="close" id="close-modal">&times;</span>
+                <h2 data-i18n="userDashboard.editProfileTitle"></h2>
                 <form id="edit-profile-form">
-                    <label for="name" id="label-name"></label>
+                    <label for="name" data-i18n="userDashboard.name"></label>
                     <input type="text" id="name" name="name">
-
-                    <label for="surnames" id="label-surnames"></label>
+                    
+                    <label for="surnames" data-i18n="userDashboard.surnames"></label>
                     <input type="text" id="surnames" name="surnames">
-
-                    <label for="phone" id="label-phone"></label>
-                    <input type="text" id="phone" name="phone">
-
-                    <label for="country" id="label-country"></label>
-                    <input type="text" id="country" name="country">
-
-                    <label for="imageUrl" id="label-imageUrl"></label>
-                    <input type="text" id="imageUrl" name="imageUrl">
-
-                    <button type="submit" class="btn btn-primary" id="btn-save-changes"></button>
+                    
+                    <label for="phone" data-i18n="userDashboard.phone"></label>
+                    <input type="tel" id="phone" name="phone">
+                    
+                    <label for="country" data-i18n="userDashboard.country"></label>
+                    <select id="country" name="country">
+                        <option value=""></option>
+                        <option value="AF"></option>
+                        <option value="AL"></option>
+                        <option value="DE"></option>
+                        <option value="AD"></option>
+                        <option value="AO"></option>
+                        <option value="AR"></option>
+                        <option value="AM"></option>
+                        <option value="AU"></option>
+                        <option value="AT"></option>
+                        <option value="BE"></option>
+                        <option value="BO"></option>
+                        <option value="BR"></option>
+                        <option value="CA"></option>
+                        <option value="CL"></option>
+                        <option value="CN"></option>
+                        <option value="CO"></option>
+                        <option value="CR"></option>
+                        <option value="HR"></option>
+                        <option value="CU"></option>
+                        <option value="DK"></option>
+                        <option value="EC"></option>
+                        <option value="EG"></option>
+                        <option value="SV"></option>
+                        <option value="ES"></option>
+                        <option value="US"></option>
+                        <option value="FI"></option>
+                        <option value="FR"></option>
+                        <option value="GR"></option>
+                        <option value="GT"></option>
+                        <option value="HN"></option>
+                        <option value="HU"></option>
+                        <option value="IN"></option>
+                        <option value="ID"></option>
+                        <option value="IE"></option>
+                        <option value="IL"></option>
+                        <option value="IT"></option>
+                        <option value="JP"></option>
+                        <option value="MX"></option>
+                        <option value="MC"></option>
+                        <option value="MA"></option>
+                        <option value="NI"></option>
+                        <option value="NO"></option>
+                        <option value="NZ"></option>
+                        <option value="PA"></option>
+                        <option value="PY"></option>
+                        <option value="PE"></option>
+                        <option value="PL"></option>
+                        <option value="PT"></option>
+                        <option value="PR"></option>
+                        <option value="GB"></option>
+                        <option value="DO"></option>
+                        <option value="RO"></option>
+                        <option value="RU"></option>
+                        <option value="SM"></option>
+                        <option value="SA"></option>
+                        <option value="SE"></option>
+                        <option value="CH"></option>
+                        <option value="TR"></option>
+                        <option value="UA"></option>
+                        <option value="UY"></option>
+                        <option value="VE"></option>
+                    </select>
+                    
+                    <label for="imageUrl" data-i18n="userDashboard.imageUrl"></label>
+                    <div class="image-url-container">
+                        <input type="url" id="imageUrl" name="imageUrl" placeholder="https://example.com/image.jpg">
+                        <div class="image-preview">
+                            <img id="image-preview" src="../imagenes/avatar-default.svg" alt="Preview">
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" data-i18n="userDashboard.saveChanges"></button>
                 </form>
             </div>
         </div>
 
-        <!-- Modal añadir contacto -->
+        <!-- MODAL AÑADIR CONTACTO -->
         <div id="add-contact-modal" class="modal">
             <div class="modal-content">
-                <span id="close-contact-modal" class="close">&times;</span>
-                <h2 id="modal-title-add-contact"></h2>
-                <p class="modal-description" id="modal-description-contact"></p>
+                <span class="close" id="close-add-contact-modal">&times;</span>
+                <h2 data-i18n="userDashboard.addContactTitle"></h2>
+                <p class="modal-description" data-i18n="userDashboard.addContactDescription"></p>
                 <form id="add-contact-form">
-                    <label for="contact-email" id="label-contact-email"></label>
-                    <input 
-                        type="email" 
-                        id="contact-email" 
-                        required
-                        autocomplete="off">
-                    <button type="submit" class="btn btn-primary" id="btn-add-contact"></button>
+                    <label for="contact-email" data-i18n="userDashboard.email"></label>
+                    <input type="email" id="contact-email" name="contact-email" required>
+                    <button type="submit" class="btn btn-primary" data-i18n="userDashboard.addButton"></button>
                 </form>
             </div>
+        </div>
+
+        <!-- MODAL DE CONFIRMACIÓN -->
+        <div id="confirm-modal" class="modal">
+            <div class="modal-content confirm-modal">
+                <h2 id="confirm-title"></h2>
+                <p id="confirm-message"></p>
+                <div class="confirm-buttons">
+                    <button class="btn btn-secondary" id="confirm-cancel"></button>
+                    <button class="btn btn-primary" id="confirm-accept"></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- FOOTER: IDIOMA Y TEMA -->
+        <div class="footer-box">
+            <div class="footer-item">
+                <img src="https://api.iconify.design/mdi/web.svg" alt="Language" class="footer-icon">
+                <select id="language-selector" class="footer-select">
+                    <option value="es">ES</option>
+                    <option value="en">EN</option>
+                </select>
+            </div>
+            <div class="footer-divider"></div>
+            <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">
+                <svg class="theme-icon sun-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 18C8.68629 18 6 15.3137 6 12C6 8.68629 8.68629 6 12 6C15.3137 6 18 8.68629 18 12C18 15.3137 15.3137 18 12 18ZM12 16C14.2091 16 16 14.2091 16 12C16 9.79086 14.2091 8 12 8C9.79086 8 8 9.79086 8 12C8 14.2091 9.79086 16 12 16ZM11 1H13V4H11V1ZM11 20H13V23H11V20ZM3.51472 4.92893L4.92893 3.51472L7.05025 5.63604L5.63604 7.05025L3.51472 4.92893ZM16.9497 18.364L18.364 16.9497L20.4853 19.0711L19.0711 20.4853L16.9497 18.364ZM19.0711 3.51472L20.4853 4.92893L18.364 7.05025L16.9497 5.63604L19.0711 3.51472ZM5.63604 16.9497L7.05025 18.364L4.92893 20.4853L3.51472 19.0711L5.63604 16.9497ZM23 11V13H20V11H23ZM4 11V13H1V11H4Z"/>
+                </svg>
+                <svg class="theme-icon moon-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M10 7C10 10.866 13.134 14 17 14C18.9584 14 20.729 13.1957 21.9995 11.8995C22 11.933 22 11.9665 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C12.0335 2 12.067 2 12.1005 2.00049C10.8043 3.27098 10 5.04157 10 7ZM4 12C4 16.4183 7.58172 20 12 20C15.0583 20 17.7158 18.2839 19.062 15.7621C18.3945 15.9187 17.7035 16 17 16C12.0294 16 8 11.9706 8 7C8 6.29648 8.08133 5.60547 8.2379 4.938C5.71611 6.28423 4 8.9417 4 12Z"/>
+                </svg>
+            </button>
         </div>
     </main>
 </body>
