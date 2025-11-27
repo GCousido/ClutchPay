@@ -5,6 +5,16 @@ import { addContactSchema, formatZodError } from '@/libs/validations';
 import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
 
+/**
+ * GET /api/users/:id/contacts
+ * Retrieves paginated list of user's contacts
+ * User can only access their own contacts
+ * @param {Request} request - HTTP request with pagination params
+ * @returns {Promise<NextResponse>} Paginated list of contacts with metadata
+ * @throws {401} If user is not authenticated
+ * @throws {403} If user tries to access another user's contacts
+ * @throws {400} If user ID is invalid
+ */
 export async function GET(request: Request) {
   try {
     const sessionUser = await requireAuth();
@@ -76,6 +86,17 @@ export async function GET(request: Request) {
   }
 }
 
+/**
+ * DELETE /api/users/:id/contacts
+ * Removes a contact from user's contact list
+ * User can only delete from their own contacts
+ * @param {Request} request - HTTP request with contactId in body
+ * @returns {Promise<NextResponse>} Success message (200)
+ * @throws {401} If user is not authenticated
+ * @throws {403} If user tries to delete from another user's contacts
+ * @throws {400} If user ID or contactId is invalid
+ * @throws {404} If contact not found in user's list
+ */
 export async function DELETE(request: Request) {
   try {
     const sessionUser = await requireAuth();
@@ -134,6 +155,17 @@ export async function DELETE(request: Request) {
   }
 }
 
+/**
+ * POST /api/users/:id/contacts
+ * Adds a new contact to user's contact list
+ * User can only add to their own contacts
+ * @param {Request} request - HTTP request with contactId in body
+ * @returns {Promise<NextResponse>} Updated user with new contact (201)
+ * @throws {401} If user is not authenticated
+ * @throws {403} If user tries to add to another user's contacts
+ * @throws {400} If user ID is invalid, tries to add themselves, or contact already exists
+ * @throws {404} If contact user not found
+ */
 export async function POST(request: Request) {
   try {
     const sessionUser = await requireAuth();

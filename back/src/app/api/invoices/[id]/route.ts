@@ -31,6 +31,11 @@ const invoiceSelect = {
 	},
 };
 
+/**
+ * Builds update data object from validated payload
+ * @param {z.infer<typeof invoiceUpdateSchema>} payload - Validated update data
+ * @returns {Prisma.InvoiceUpdateInput} Prisma update input object
+ */
 function buildUpdateData(payload: z.infer<typeof invoiceUpdateSchema>) {
 	const data: Prisma.InvoiceUpdateInput = {};
 
@@ -57,6 +62,16 @@ function buildUpdateData(payload: z.infer<typeof invoiceUpdateSchema>) {
 	return data;
 }
 
+/**
+ * GET /api/invoices/:id
+ * Retrieves a single invoice by ID with payment details
+ * @param {Request} request - HTTP request
+ * @param {object} context - Route context with invoice ID
+ * @returns {Promise<NextResponse>} Invoice object with payment info
+ * @throws {401} If user is not authenticated
+ * @throws {400} If invoice ID is invalid
+ * @throws {404} If invoice not found or user is not issuer/debtor
+ */
 export async function GET(
 	request: Request,
 	context: { params: Promise<{ id: string }> }
@@ -90,6 +105,17 @@ export async function GET(
 	}
 }
 
+/**
+ * PUT /api/invoices/:id
+ * Updates an invoice (only issuer can update, cannot update paid invoices)
+ * Supports PDF replacement (deletes old, uploads new)
+ * @param {Request} request - HTTP request with update data
+ * @param {object} context - Route context with invoice ID
+ * @returns {Promise<NextResponse>} Updated invoice object
+ * @throws {401} If user is not authenticated
+ * @throws {400} If invoice ID is invalid or invoice has payment
+ * @throws {404} If invoice not found or user is not issuer
+ */
 export async function PUT(
 	request: Request,
 	context: { params: Promise<{ id: string }> }
@@ -155,6 +181,17 @@ export async function PUT(
 	}
 }
 
+/**
+ * DELETE /api/invoices/:id
+ * Cancels an invoice and deletes its PDF from Cloudinary
+ * Only issuer can delete, cannot delete paid invoices
+ * @param {Request} request - HTTP request
+ * @param {object} context - Route context with invoice ID
+ * @returns {Promise<NextResponse>} Success message (200)
+ * @throws {401} If user is not authenticated
+ * @throws {400} If invoice ID is invalid or invoice has payment
+ * @throws {404} If invoice not found or user is not issuer
+ */
 export async function DELETE(
 	request: Request,
 	context: { params: Promise<{ id: string }> }

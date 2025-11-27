@@ -1,5 +1,8 @@
 # ClutchPay Backend
 
+[![Backend Tests](https://github.com/GCousido/ClutchPay/actions/workflows/backend-tests.yml/badge.svg)](https://github.com/GCousido/ClutchPay/actions/workflows/backend-tests.yml)
+[![codecov](https://codecov.io/gh/GCousido/ClutchPay/graph/badge.svg?token=YO9JU00M3K)](https://codecov.io/gh/GCousido/ClutchPay)
+
 The backend application for ClutchPay, built with Next.js App Router, Prisma ORM, and PostgreSQL. This service provides a RESTful API for invoice management, user authentication, and payment tracking.
 
 ---
@@ -10,9 +13,11 @@ This is a full-stack Next.js application using the App Router architecture with 
 
 - **User Authentication**: Secure credential-based authentication with NextAuth.js
 - **User Management**: CRUD operations for user profiles and contacts
+- **Invoice Management**: Create, update, and delete invoices with PDF attachments
+- **File Storage**: Cloudinary integration for images and PDFs
 - **Database Operations**: PostgreSQL database with Prisma ORM
 - **Validation**: Type-safe request/response validation with Zod
-- **Testing**: Comprehensive test suite with Vitest
+- **Testing**: Comprehensive test suite with Vitest (unit + integration tests)
 
 ---
 
@@ -26,16 +31,19 @@ back/
 │   ├── app/              # Next.js App Router
 │   │   ├── api/          # API routes
 │   │   │   ├── auth/     # Authentication endpoints
+│   │   │   ├── invoices/ # Invoice management endpoints
 │   │   │   └── users/    # User management endpoints
 │   │   ├── layout.tsx    # Root layout
 │   │   └── page.tsx      # Home page
 │   │
 │   └── libs/             # Shared libraries
 │       ├── auth.ts       # NextAuth configuration
+│       ├── cloudinary.ts # Cloudinary file upload/delete
 │       ├── db.ts         # Prisma client singleton
 │       ├── api-helpers.ts # API utility functions
 │       └── validations/  # Zod schemas
 │           ├── index.ts
+│           ├── invoice.ts
 │           └── user.ts
 │
 ├── prisma/
@@ -82,6 +90,11 @@ NEXTAUTH_SECRET=your-secure-random-secret-min-32-chars
 # JWT
 JWT_SECRET=your-jwt-secret-key-min-32-chars
 
+# Cloudinary (File Storage)
+NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=your-cloud-name
+NEXT_PUBLIC_CLOUDINARY_API_KEY=your-api-key
+CLOUDINARY_API_SECRET=your-api-secret
+
 # Application
 NODE_ENV=development
 ```
@@ -90,12 +103,15 @@ NODE_ENV=development
 
 Located at `prisma/schema.prisma`, defines:
 
-- **User Model**: User entity
-- **Invoice Model**: Invoice entity
-- **Payment Model**: Payment entity
-- **Notification Model**: Notification entity
-- **Relationships**: Relationships between entities.
-- **Indexes**: Optimized for common queries
+- **User Model**: User authentication and profile data
+- **Invoice Model**: Invoice data
+- **Payment Model**: Payment tracking linked to invoices
+- **Notification Model**: User notifications
+- **Relationships**:
+  - User → Invoice (issuer/debtor)
+  - Invoice → Payment (one-to-one)
+  - User ↔ User (contacts, many-to-many)
+- **Indexes**: Optimized for queries on email, invoice numbers, status, dates
 
 ### Next.js Configuration
 
@@ -200,12 +216,99 @@ Content-Type: application/json
 }
 ```
 
+### Invoices
+
+#### **Get All Invoices**
+
+```http
+GET /api/invoices?role=issuer&page=1&limit=10
+Authorization: Bearer {token}
+```
+
+Query Parameters:
+
+- `role`: `issuer` or `debtor` (required)
+- `page`: Page number (default: 1)
+- `limit`: Items per page (default: 10, max: 1000)
+- `status`: Filter by status (`PENDING`, `PAID`, `CANCELLED`)
+- `subject`: Filter by subject (partial match)
+- `minAmount`, `maxAmount`: Filter by amount range
+- `issueDateFrom`, `issueDateTo`: Filter by issue date
+- `dueDateFrom`, `dueDateTo`: Filter by due date
+- `sortBy`: Sort field (default: `createdAt`)
+- `sortOrder`: `asc` or `desc` (default: `desc`)
+
+#### **Create Invoice**
+
+```http
+POST /api/invoices
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "invoiceNumber": "INV-2024-001",
+  "issuerUserId": 1,
+  "debtorUserId": 2,
+  "subject": "Web Development Services",
+  "description": "Full stack development for e-commerce platform",
+  "amount": 2500.00,
+  "status": "PENDING",
+  "issueDate": "2024-01-15",
+  "dueDate": "2024-02-15",
+  "invoicePdf": "data:application/pdf;base64,JVBERi0xLjQK..."
+}
+```
+
+**Note**: `invoicePdf` must be a base64-encoded PDF with the `data:application/pdf;base64,` prefix. The PDF is automatically uploaded to Cloudinary.
+
+#### **Get Invoice by ID**
+
+```http
+GET /api/invoices/{id}
+Authorization: Bearer {token}
+```
+
+Returns invoice details including payment information if available.
+
+#### **Update Invoice**
+
+```http
+PUT /api/invoices/{id}
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "subject": "Updated Service Description",
+  "amount": 3000.00,
+  "invoicePdf": "data:application/pdf;base64,JVBERi0xLjQK..."
+}
+```
+
+**Restrictions**:
+
+- Only the issuer can update an invoice
+- Invoices with payments cannot be modified
+- If `invoicePdf` is provided, old PDF is deleted from Cloudinary
+
+#### **Delete Invoice**
+
+```http
+DELETE /api/invoices/{id}
+Authorization: Bearer {token}
+```
+
+**Restrictions**:
+
+- Only the issuer can delete an invoice
+- Invoices with payments cannot be deleted
+- PDF is automatically deleted from Cloudinary
+
 ### Users
 
 #### **Get All Users**
 
 ```http
-GET /api/users
+GET /api/users?page=1&limit=10
 Authorization: Bearer {token}
 ```
 
@@ -224,23 +327,19 @@ Authorization: Bearer {token}
 Content-Type: application/json
 
 {
-  "firstName": "Jane",
-  "lastName": "Smith",
-  "phone": "+34698765432"
+  "name": "Jane",
+  "surnames": "Smith Doe",
+  "phone": "+34698765432",
+  "imageBase64": "data:image/png;base64,iVBORw0KG..."
 }
 ```
 
-#### **Delete User**
-
-```http
-DELETE /api/users/{id}
-Authorization: Bearer {token}
-```
+**Note**: `imageBase64` is optional. If provided, old image is deleted from Cloudinary and new one is uploaded.
 
 #### **Get User Contacts**
 
 ```http
-GET /api/users/{id}/contacts
+GET /api/users/{id}/contacts?page=1&limit=10
 Authorization: Bearer {token}
 ```
 
@@ -252,8 +351,53 @@ Authorization: Bearer {token}
 Content-Type: application/json
 
 {
-  "contactId": "contact-user-id"
+  "contactId": 2
 }
+```
+
+#### **Remove Contact**
+
+```http
+DELETE /api/users/{id}/contacts
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "contactId": 2
+}
+```
+
+---
+
+## ☁️ Cloudinary Integration
+
+ClutchPay uses Cloudinary for storing and managing files:
+
+### Features
+
+- **Profile Images**: Automatic upload, transformation (500x500), and deletion
+- **Invoice PDFs**: Upload as raw resources, automatic deletion on invoice cancellation
+- **URL Extraction**: Automatic public_id extraction from Cloudinary URLs
+
+### Folder Structure
+
+```text
+ClutchPay/
+├── profile_images/    # User profile pictures
+├── invoices/          # Invoice PDF documents
+└── tests/             # Integration test files
+    ├── images/        # Test images
+    └── invoices/      # Test PDFs
+```
+
+### Configuration
+
+Set these environment variables:
+
+```env
+NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=your-cloud-name
+NEXT_PUBLIC_CLOUDINARY_API_KEY=your-api-key
+CLOUDINARY_API_SECRET=your-api-secret
 ```
 
 ---

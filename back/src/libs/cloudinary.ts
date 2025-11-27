@@ -10,10 +10,11 @@ cloudinary.config({
 });
 
 /**
- * Upload an image to Cloudinary
- * @param base64Image - Base64 encoded image string (with data:image prefix)
- * @param folder - Cloudinary folder path (default: 'ClutchPay/profile_images')
- * @returns Upload result with secure_url and public_id
+ * Uploads an image to Cloudinary with automatic transformations
+ * @param {string} base64Image - Base64 encoded image (with data:image/ prefix)
+ * @param {string} [folder='ClutchPay/profile_images'] - Cloudinary folder path
+ * @returns {Promise<{url: string, publicId: string}>} Secure URL and public ID of the resource
+ * @throws {Error} If Cloudinary upload fails
  */
 export async function uploadImage(base64Image: string, folder = 'ClutchPay/profile_images') {
   try {
@@ -37,9 +38,10 @@ export async function uploadImage(base64Image: string, folder = 'ClutchPay/profi
 }
 
 /**
- * Delete an image from Cloudinary
- * @param publicId - Public ID of the image to delete
- * @returns Deletion result
+ * Deletes an image from Cloudinary
+ * @param {string} publicId - Public ID of the image to delete
+ * @returns {Promise<DestroyResult>} Result of the deletion operation
+ * @throws {Error} If deletion fails or result is unexpected
  */
 export async function deleteImage(publicId: string) {
   try {
@@ -57,9 +59,12 @@ export async function deleteImage(publicId: string) {
 }
 
 /**
- * Extract public_id from Cloudinary URL
- * @param url - Cloudinary image URL
- * @returns Public ID or null if invalid URL
+ * Extracts the public_id from a Cloudinary URL
+ * @param {string} url - Cloudinary image/document URL
+ * @returns {string | null} Extracted public ID or null if URL is invalid
+ * @example
+ * extractPublicId('https://res.cloudinary.com/cloud/image/upload/v123/folder/image.jpg')
+ * // returns 'folder/image'
  */
 export function extractPublicId(url: string): string | null {
   try {
@@ -72,10 +77,11 @@ export function extractPublicId(url: string): string | null {
 }
 
 /**
- * Upload a PDF to Cloudinary
- * @param base64Pdf - Base64 encoded PDF string (with data:application/pdf prefix)
- * @param folder - Cloudinary folder path (default: 'ClutchPay/invoices')
- * @returns Upload result with secure_url and public_id
+ * Uploads a PDF to Cloudinary as a raw resource
+ * @param {string} base64Pdf - Base64 encoded PDF (with data:application/pdf;base64, prefix)
+ * @param {string} [folder='ClutchPay/invoices'] - Cloudinary folder path
+ * @returns {Promise<{url: string, publicId: string}>} Secure URL and public ID of the resource
+ * @throws {Error} If Cloudinary upload fails
  */
 export async function uploadPdf(base64Pdf: string, folder = 'ClutchPay/invoices') {
   try {
@@ -96,9 +102,10 @@ export async function uploadPdf(base64Pdf: string, folder = 'ClutchPay/invoices'
 }
 
 /**
- * Delete a PDF from Cloudinary
- * @param publicId - Public ID of the PDF to delete
- * @returns Deletion result
+ * Deletes a PDF from Cloudinary (raw resource)
+ * @param {string} publicId - Public ID of the PDF to delete
+ * @returns {Promise<DestroyResult>} Result of the deletion operation
+ * @throws {Error} If deletion fails or result is unexpected
  */
 export async function deletePdf(publicId: string) {
   try {
