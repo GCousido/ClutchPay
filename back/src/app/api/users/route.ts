@@ -3,6 +3,13 @@ import { getPagination, handleError, requireAuth } from '@/libs/api-helpers';
 import { db } from '@/libs/db';
 import { NextResponse } from 'next/server';
 
+/**
+ * GET /api/users
+ * Retrieves a paginated list of all users (requires authentication)
+ * @param {Request} request - HTTP request with pagination params
+ * @returns {Promise<NextResponse>} Paginated list of users with metadata
+ * @throws {401} If user is not authenticated
+ */
 export async function GET(request: Request) {
   try {
     // Check authentication

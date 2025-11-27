@@ -1,8 +1,9 @@
 # ClutchPay
 
-[![Backend Tests](https://github.com/GCousido/ClutchPay/actions/workflows/backend-tests.yml/badge.svg)](https://github.com/GCousido/ClutchPay/actions/workflows/backend-tests.yml)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.9.0-brightgreen)](https://nodejs.org/)
 [![pnpm Version](https://img.shields.io/badge/pnpm-%3E%3D8.0.0-orange)](https://pnpm.io/)
+[![Backend Tests](https://github.com/GCousido/ClutchPay/actions/workflows/backend-tests.yml/badge.svg)](https://github.com/GCousido/ClutchPay/actions/workflows/backend-tests.yml)
+[![Backend Coverage](https://codecov.io/gh/GCousido/ClutchPay/graph/badge.svg?token=YO9JU00M3K)](https://codecov.io/gh/GCousido/ClutchPay)
 
 A invoice management application built with Next.js and Prisma ORM. ClutchPay allows users to create, send, and manage invoices, make and track payments, and generate payment receipts automatically.
 
@@ -25,11 +26,13 @@ A invoice management application built with Next.js and Prisma ORM. ClutchPay al
 ## ✨ Features
 
 - **User Authentication**: Secure authentication system with NextAuth.js
+- **Invoice Management**: Create, update, and track invoices with PDF storage
+- **File Storage**: Automatic PDF and image upload to Cloudinary
 - **Multi-language Support**: Internationalization (i18n) for English and Spanish
 - **Responsive Design**: Mobile-friendly interface
 - **API-First Architecture**: RESTful API with comprehensive validation
 - **Database Management**: PostgreSQL with Prisma ORM
-- **Automated Testing**: Comprehensive test suite
+- **Automated Testing**: Comprehensive test suite with integration tests
 - **CI/CD Pipeline**: Automated testing on every push
 
 ---
@@ -44,6 +47,7 @@ A invoice management application built with Next.js and Prisma ORM. ClutchPay al
 - **ORM**: [Prisma](https://www.prisma.io/)
 - **Authentication**: [NextAuth.js](https://next-auth.js.org/)
 - **Validation**: [Zod](https://zod.dev/)
+- **File Storage**: [Cloudinary](https://cloudinary.com/) (Images & PDFs)
 - **Testing**: [Vitest](https://vitest.dev/)
 
 ### Frontend

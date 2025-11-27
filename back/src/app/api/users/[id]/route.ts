@@ -5,6 +5,16 @@ import { db } from '@/libs/db';
 import { userUpdateSchema } from '@/libs/validations';
 import { NextResponse } from 'next/server';
 
+/**
+ * GET /api/users/:id
+ * Retrieves user profile by ID (user can only access their own profile)
+ * @param {Request} request - HTTP request
+ * @param {object} params - Route parameters with user ID
+ * @returns {Promise<NextResponse>} User profile object
+ * @throws {401} If user is not authenticated
+ * @throws {403} If user tries to access another user's profile
+ * @throws {400} If user ID is invalid
+ */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const sessionUser = await requireAuth();
@@ -38,6 +48,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   }
 }
 
+/**
+ * PUT /api/users/:id
+ * Updates user profile (supports image upload to Cloudinary)
+ * User can only update their own profile
+ * @param {Request} request - HTTP request with update data
+ * @param {object} params - Route parameters with user ID
+ * @returns {Promise<NextResponse>} Updated user object
+ * @throws {401} If user is not authenticated
+ * @throws {403} If user tries to update another user's profile
+ * @throws {400} If user ID is invalid or validation fails
+ */
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }

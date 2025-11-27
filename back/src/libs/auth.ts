@@ -1,4 +1,4 @@
-// lib/auth.ts
+// libs/auth.ts
 import { db } from '@/libs/db';
 import bcrypt from 'bcryptjs';
 import { NextAuthOptions } from 'next-auth';

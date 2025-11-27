@@ -6,6 +6,14 @@ import { invoiceCreateSchema, invoiceListQuerySchema } from '@/libs/validations/
 import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
 
+/**
+ * GET /api/invoices
+ * Retrieves a paginated list of invoices for the authenticated user
+ * @param {Request} request - HTTP request with query parameters
+ * @returns {Promise<NextResponse>} Paginated list of invoices with metadata
+ * @throws {401} If user is not authenticated
+ * @throws {400} If validation fails
+ */
 export async function GET(request: Request) {
 	try {
 		const sessionUser = await requireAuth();
@@ -96,6 +104,16 @@ export async function GET(request: Request) {
 	}
 }
 
+/**
+ * POST /api/invoices
+ * Creates a new invoice with PDF upload to Cloudinary
+ * @param {Request} request - HTTP request with invoice data in body
+ * @returns {Promise<NextResponse>} Created invoice object (201)
+ * @throws {401} If user is not authenticated
+ * @throws {403} If user tries to issue invoice as someone else
+ * @throws {400} If user tries to invoice themselves or validation fails
+ * @throws {404} If debtor user not found
+ */
 export async function POST(request: Request) {
 	try {
 		const sessionUser = await requireAuth();
