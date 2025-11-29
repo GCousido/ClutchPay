@@ -2,7 +2,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { clearMockSession, setMockSession } from '../setup';
 
-// Helper para crear Request objects en tests
+// Helper for creating a basic Request
 export function createRequest(
   url: string,
   options: {
@@ -25,7 +25,7 @@ export function createRequest(
   });
 }
 
-// Helper para crear Request autenticado (mock de sesión)
+// Helper for creating an authenticated Request
 export function createAuthenticatedRequest(
   url: string,
   options: {
@@ -64,7 +64,7 @@ export async function getJsonResponse(response: Response) {
   }
 }
 
-// Helper para testear API handlers de Next.js
+// Helper to test API route handlers directly
 export async function testApiHandler(options: {
   method: string;
   url: string;

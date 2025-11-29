@@ -314,6 +314,8 @@ POSTGRES_PASSWORD=clutchpay_pass
 
 DATABASE_URL=postgresql://clutchpay_user:clutchpay_pass@localhost:5432/clutchpay_db?schema=public
 
+TEST_DATABASE_URL=postgresql://clutchpay_user:clutchpay_pass@localhost:5432/clutchpay_db?schema=public
+
 # ============================================================================
 # Application URLs
 # ============================================================================
