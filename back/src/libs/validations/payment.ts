@@ -2,47 +2,6 @@ import { PaymentMethod } from '@prisma/client';
 import { z } from 'zod';
 
 /**
- * Base64 PDF validation schema
- * Validates that the string is a valid base64 PDF with proper prefix
- */
-const pdfBase64Validation = z
-  .string()
-  .min(1, 'Receipt PDF is required')
-  .refine(
-    (val) => val.startsWith('data:application/pdf;base64,'),
-    { message: 'PDF must be a valid base64 string with data:application/pdf;base64, prefix' }
-  );
-
-/**
- * Schema for creating a new payment
- * Used when processing a payment for an invoice
- */
-export const paymentCreateSchema = z.object({
-  invoiceId: z
-    .number()
-    .int('Invoice ID must be an integer')
-    .positive('Invalid invoice ID'),
-  paymentMethod: z.enum(PaymentMethod, {
-    message: 'Invalid payment method. Valid options: PAYPAL, VISA, MASTERCARD, OTHER',
-  }),
-  subject: z
-    .string()
-    .min(1, 'Subject must be at least 1 character')
-    .max(500, 'Subject must not exceed 500 characters')
-    .trim()
-    .optional()
-    .nullable(),
-  receiptPdf: pdfBase64Validation,
-  // Optional payment reference (e.g., Stripe/PayPal transaction ID)
-  paymentReference: z
-    .string()
-    .max(255, 'Payment reference must not exceed 255 characters')
-    .trim()
-    .optional()
-    .nullable(),
-});
-
-/**
  * Schema for payment list query parameters
  * Used when fetching paginated list of payments with filters
  */
@@ -126,5 +85,4 @@ export const paymentListQuerySchema = z
   });
 
 // TypeScript Types
-export type PaymentCreateInput = z.infer<typeof paymentCreateSchema>;
 export type PaymentListQueryInput = z.infer<typeof paymentListQuerySchema>;
