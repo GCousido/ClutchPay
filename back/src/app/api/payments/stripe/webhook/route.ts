@@ -1,7 +1,10 @@
 // app/api/payments/stripe/webhook/route.ts
+import { uploadPdf } from '@/libs/cloudinary';
 import { db } from '@/libs/db';
 import { createPayPalPayout } from '@/libs/paypal';
+import { generateReceiptPdf } from '@/libs/pdf-generator';
 import {
+  stripe,
   StripePaymentMetadata,
   verifyWebhookSignature
 } from '@/libs/stripe';
@@ -200,6 +203,63 @@ async function processSuccessfulPayment(session: Stripe.Checkout.Session) {
     return;
   }
 
+  // Get or generate receipt URL
+  let receiptUrl = '';
+
+  // 1. Try to get receipt from Stripe
+  if (session.payment_intent) {
+    try {
+      const paymentIntentId = typeof session.payment_intent === 'string' 
+        ? session.payment_intent 
+        : session.payment_intent.id;
+        
+      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      if (paymentIntent.latest_charge) {
+        const chargeId = typeof paymentIntent.latest_charge === 'string'
+          ? paymentIntent.latest_charge
+          : paymentIntent.latest_charge.id;
+          
+        const charge = await stripe.charges.retrieve(chargeId);
+        if (charge.receipt_url) {
+          receiptUrl = charge.receipt_url;
+          console.log('[Stripe Webhook] Retrieved Stripe receipt URL');
+        }
+      }
+    } catch (err) {
+      console.error('[Stripe Webhook] Failed to retrieve Stripe receipt:', err);
+    }
+  }
+
+  // 2. If no Stripe receipt, generate PDF
+  if (!receiptUrl) {
+    try {
+      console.log('[Stripe Webhook] Generating PDF receipt...');
+      const pdfBuffer = await generateReceiptPdf({
+        paymentReference: (session.payment_intent as string) || session.id,
+        paymentDate: new Date(),
+        amount: session.amount_total || 0,
+        currency: session.currency || 'eur',
+        paymentMethod: 'PAYPAL',
+        invoiceNumber: metadata.invoiceNumber,
+        subject: `Payment for Invoice ${metadata.invoiceNumber}`,
+        payerName: metadata.payerEmail, // Using email as name fallback
+        payerEmail: metadata.payerEmail,
+        receiverName: metadata.receiverEmail, // Using email as name fallback
+        receiverEmail: metadata.receiverEmail,
+      });
+
+      // Convert Buffer to base64 data URI for Cloudinary
+      const base64Pdf = `data:application/pdf;base64,${pdfBuffer.toString('base64')}`;
+      const uploadResult = await uploadPdf(base64Pdf, 'ClutchPay/receipts');
+      receiptUrl = uploadResult.url;
+      console.log('[Stripe Webhook] Generated and uploaded PDF receipt:', receiptUrl);
+    } catch (err) {
+      console.error('[Stripe Webhook] Failed to generate/upload receipt PDF:', err);
+      // Fallback to avoid failing the payment process
+      receiptUrl = `unavailable`; 
+    }
+  }
+
   // Create payment record and update invoice in a transaction
   const payment = await db.$transaction(async (tx) => {
     // Create the payment record
@@ -208,8 +268,8 @@ async function processSuccessfulPayment(session: Stripe.Checkout.Session) {
         invoiceId,
         paymentDate: new Date(),
         paymentMethod: PaymentMethod.PAYPAL, // Payment via Stripe-PayPal integration
-        paymentReference: session.payment_intent as string || session.id,
-        receiptPdfUrl: `stripe://session/${session.id}`, // Placeholder - receipt from Stripe
+        paymentReference: (session.payment_intent as string) || session.id,
+        receiptPdfUrl: receiptUrl,
         subject: `Payment via Stripe Checkout - Session ${session.id}`,
       },
     });

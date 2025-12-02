@@ -6,10 +6,38 @@ import { db } from '../../../src/libs/db';
 import * as paypalLib from '../../../src/libs/paypal';
 import * as stripeLib from '../../../src/libs/stripe';
 
+// Mock PDF Generator
+vi.mock('../../../src/libs/pdf-generator', () => ({
+  generateReceiptPdf: vi.fn().mockResolvedValue(Buffer.from('mock-pdf')),
+}));
+
+// Mock Cloudinary
+vi.mock('../../../src/libs/cloudinary', () => ({
+  uploadPdf: vi.fn().mockResolvedValue({
+    url: 'https://res.cloudinary.com/demo/image/upload/v1234567890/receipt.pdf',
+    publicId: 'receipt_123',
+  }),
+}));
+
 // Mock Stripe library
 vi.mock('../../../src/libs/stripe', () => ({
   verifyWebhookSignature: vi.fn(),
   fromCents: vi.fn((cents: number) => cents / 100),
+  stripe: {
+    paymentIntents: {
+      retrieve: vi.fn().mockResolvedValue({
+        latest_charge: {
+          id: 'ch_123',
+          receipt_url: 'https://pay.stripe.com/receipts/acct_123/ch_123/rcpt_123',
+        },
+      }),
+    },
+    charges: {
+      retrieve: vi.fn().mockResolvedValue({
+        receipt_url: 'https://pay.stripe.com/receipts/acct_123/ch_123/rcpt_123',
+      }),
+    },
+  },
 }));
 
 // Mock PayPal library
