@@ -189,46 +189,6 @@ export function verifyWebhookSignature(payload: string, signature: string): Stri
 }
 
 /**
- * Creates a PayPal payout to the invoice receiver
- * 
- * NOTE: This is a placeholder for future implementation.
- * In production, you would use PayPal Payouts API to transfer funds
- * to the invoice issuer's PayPal account.
- * 
- * @param params - Payout parameters
- * @param params.receiverEmail - PayPal email of the receiver
- * @param params.amount - Amount in cents
- * @param params.currency - Currency code
- * @param params.invoiceNumber - Reference for the payout
- * @returns Promise with payout result
- */
-export async function createPayPalPayout(params: {
-  receiverEmail: string;
-  amount: number;
-  currency: string;
-  invoiceNumber: string;
-}): Promise<{ payoutId: string; status: string }> {
-  // TODO: Implement PayPal Payouts API integration
-  // For now, we'll simulate the payout
-  console.log('[Stripe->PayPal Payout] Simulated payout:', {
-    receiver: params.receiverEmail,
-    amount: params.amount / 100,
-    currency: params.currency.toUpperCase(),
-    reference: params.invoiceNumber,
-  });
-
-  // In production, you would:
-  // 1. Use PayPal REST SDK to create a payout
-  // 2. Store the payout ID for tracking
-  // 3. Handle payout webhooks for status updates
-
-  return {
-    payoutId: `PAYOUT_${Date.now()}_${params.invoiceNumber}`,
-    status: 'pending',
-  };
-}
-
-/**
  * Converts decimal amount to cents for Stripe
  * 
  * @param amount - Amount as decimal (e.g., 99.99)

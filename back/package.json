@@ -25,6 +25,8 @@
         "coverage:all": "pnpm test:coverage --run && pnpm coverage:md && pnpm coverage:pdf"
     },
     "dependencies": {
+        "@paypal/payouts-sdk": "^1.1.1",
+        "@paypal/paypal-server-sdk": "^2.0.0",
         "@prisma/client": "^6.18.0",
         "bcryptjs": "^3.0.3",
         "cloudinary": "^2.8.0",

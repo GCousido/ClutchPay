@@ -3,13 +3,21 @@ import { InvoiceStatus, PaymentMethod } from '@prisma/client';
 import type Stripe from 'stripe';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../../src/libs/db';
+import * as paypalLib from '../../../src/libs/paypal';
 import * as stripeLib from '../../../src/libs/stripe';
 
 // Mock Stripe library
 vi.mock('../../../src/libs/stripe', () => ({
   verifyWebhookSignature: vi.fn(),
-  createPayPalPayout: vi.fn(),
   fromCents: vi.fn((cents: number) => cents / 100),
+}));
+
+// Mock PayPal library
+vi.mock('../../../src/libs/paypal', () => ({
+  createPayPalPayout: vi.fn().mockResolvedValue({
+    payoutBatchId: 'PAYOUT_TEST_123',
+    status: 'PENDING',
+  }),
 }));
 
 // Import route handler after mocking
@@ -75,9 +83,9 @@ describe('POST /api/payments/stripe/webhook', () => {
 
     // Reset mocks
     vi.clearAllMocks();
-    vi.mocked(stripeLib.createPayPalPayout).mockResolvedValue({
-      payoutId: 'PAYOUT_TEST_123',
-      status: 'pending',
+    vi.mocked(paypalLib.createPayPalPayout).mockResolvedValue({
+      payoutBatchId: 'PAYOUT_TEST_123',
+      status: 'PENDING',
     });
   });
 
@@ -159,7 +167,8 @@ describe('POST /api/payments/stripe/webhook', () => {
 
     expect(payment).not.toBeNull();
     expect(payment?.paymentMethod).toBe(PaymentMethod.PAYPAL);
-    expect(payment?.paymentReference).toBe('pi_test_123');
+    // Payment reference now includes payout ID after processing
+    expect(payment?.paymentReference).toContain('pi_test_123');
 
     // Verify invoice status was updated
     const invoice = await db.invoice.findUnique({
@@ -169,7 +178,7 @@ describe('POST /api/payments/stripe/webhook', () => {
     expect(invoice?.status).toBe(InvoiceStatus.PAID);
 
     // Verify payout was initiated
-    expect(stripeLib.createPayPalPayout).toHaveBeenCalledWith(
+    expect(paypalLib.createPayPalPayout).toHaveBeenCalledWith(
       expect.objectContaining({
         receiverEmail: 'issuer@test.com',
         invoiceNumber: 'INV-WEBHOOK-001',
@@ -409,7 +418,7 @@ describe('POST /api/payments/stripe/webhook', () => {
   });
 
   it('should handle payout errors without failing the webhook', async () => {
-    vi.mocked(stripeLib.createPayPalPayout).mockRejectedValue(
+    vi.mocked(paypalLib.createPayPalPayout).mockRejectedValue(
       new Error('PayPal API error')
     );
 

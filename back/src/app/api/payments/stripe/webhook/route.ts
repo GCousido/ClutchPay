@@ -1,9 +1,9 @@
 // app/api/payments/stripe/webhook/route.ts
 import { db } from '@/libs/db';
+import { createPayPalPayout } from '@/libs/paypal';
 import {
-    createPayPalPayout,
-    StripePaymentMetadata,
-    verifyWebhookSignature
+  StripePaymentMetadata,
+  verifyWebhookSignature
 } from '@/libs/stripe';
 import { InvoiceStatus, PaymentMethod } from '@prisma/client';
 import { NextResponse } from 'next/server';
@@ -226,7 +226,7 @@ async function processSuccessfulPayment(session: Stripe.Checkout.Session) {
   console.log('[Stripe Webhook] Payment created:', payment.id);
 
   // Initiate payout to receiver (PayPal)
-  // In production, this would transfer funds to the invoice issuer
+  // This transfers funds from Stripe to the invoice issuer's PayPal account
   try {
     const amountInCents = session.amount_total || 0;
     const payout = await createPayPalPayout({
@@ -234,12 +234,28 @@ async function processSuccessfulPayment(session: Stripe.Checkout.Session) {
       amount: amountInCents,
       currency: session.currency || 'eur',
       invoiceNumber: metadata.invoiceNumber,
+      senderId: parseInt(metadata.payerId, 10),
+      receiverId: parseInt(metadata.receiverId, 10),
+      note: `Payment for Invoice ${metadata.invoiceNumber} via ClutchPay`,
     });
     
-    console.log('[Stripe Webhook] Payout initiated:', payout);
+    console.log('[Stripe Webhook] PayPal payout initiated:', {
+      payoutBatchId: payout.payoutBatchId,
+      status: payout.batchStatus,
+      receiver: metadata.receiverEmail,
+    });
+    
+    // Update payment record with payout reference
+    await db.payment.update({
+      where: { id: payment.id },
+      data: {
+        paymentReference: `${payment.paymentReference}|PAYOUT:${payout.payoutBatchId}`,
+      },
+    });
   } catch (payoutError) {
     // Log payout error but don't fail the webhook
-    // Payout can be retried later
-    console.error('[Stripe Webhook] Payout failed:', payoutError);
+    // Payout can be retried later via admin/cron job
+    console.error('[Stripe Webhook] PayPal payout failed:', payoutError);
+    // TODO: Queue for retry or notify admin
   }
 }
