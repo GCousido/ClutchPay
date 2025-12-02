@@ -2,9 +2,9 @@ import { afterAll, beforeAll, vi } from 'vitest';
 import { db } from '../src/libs/db';
 
 // Set test environment
+// The DATABASE_URL is set by the run-tests.ts script
 // @ts-expect-error - Restoring original NODE_ENV
 process.env.NODE_ENV = 'test';
-process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 
 // Mock NextAuth getServerSession with global context
 let mockSession: any = null;
