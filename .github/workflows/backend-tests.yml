@@ -64,6 +64,7 @@ jobs:
         run: |
           cat > .env << EOF
           DATABASE_URL=postgresql://clutchpay_test_user:clutchpay_test_pass@localhost:5432/clutchpay_test_db?schema=public
+          TEST_DATABASE_URL=postgresql://clutchpay_test_user:clutchpay_test_pass@localhost:5432/clutchpay_test_db?schema=public
           NEXTAUTH_URL=http://localhost:3000
           NEXTAUTH_SECRET=test-secret-key-for-ci-cd-testing-only
           JWT_SECRET=test-jwt-secret-for-ci-cd-testing-only
