@@ -1,3 +1,38 @@
+/**
+ * Internationalization System (i18n)
+ * 
+ * @module i18n
+ * @description Translation system for multiple languages (ES/EN).
+ * Stores selected language in localStorage and provides a simple API
+ * to get translations using dot notation.
+ * 
+ * @example
+ * // Change language
+ * i18n.setLanguage('en');
+ * 
+ * // Get translation
+ * const email = i18n.t('login.email'); // "Email"
+ * 
+ * // Get current language
+ * const currentLang = i18n.currentLang; // 'en'
+ */
+
+/**
+ * Object with all translations organized hierarchically
+ * 
+ * @const {Object} MESSAGES
+ * @property {Object} es - Spanish translations
+ * @property {Object} en - English translations
+ * 
+ * Structure for each language:
+ * - login: Login page texts
+ * - register: Registration page texts
+ * - dashboard: Main dashboard texts
+ * - country: Translated country list (69 countries)
+ * - userDashboard: User dashboard texts
+ * - invoices: Invoice management texts
+ * - general: Common application texts
+ */
 // i18n.js
 const MESSAGES = {
     es: {
@@ -126,6 +161,9 @@ const MESSAGES = {
             phone: "Teléfono",
             country: "País",
             imageUrl: "URL de Imagen",
+            profileImage: "Imagen de Perfil",
+            dropImageHere: "Arrastra una imagen aquí",
+            selectImage: "Seleccionar Imagen",
             saveChanges: "Guardar Cambios",
             loading: "Cargando contactos...",
             errorLoadingContacts: "Error al cargar contactos",
@@ -139,6 +177,14 @@ const MESSAGES = {
             filterAll: "Todas",
             filterPending: "Pendientes",
             filterPaid: "Pagadas",
+            filterAllType: "Todas",
+            filterIssued: "Emitidas",
+            filterReceived: "Recibidas",
+            sortBy: "Ordenar por",
+            sortIssueDate: "Fecha de emisión",
+            sortDueDate: "Fecha de vencimiento",
+            sortPaymentDate: "Fecha de pago",
+            sortAmount: "Cantidad",
             loading: "Cargando facturas...",
             noInvoices: "No tienes facturas",
             noInvoicesDesc: "Cuando recibas o emitas facturas, aparecerán aquí",
@@ -150,7 +196,19 @@ const MESSAGES = {
             received: "Recibida",
             issueDate: "Fecha emisión",
             dueDate: "Fecha vencimiento",
-            amount: "Monto",
+            paymentDate: "Fecha pago",
+            amount: "Importe",
+            subject: "Asunto",
+            description: "Descripción",
+            issuer: "Emisor",
+            pdfDocument: "Documento PDF",
+            downloadPdf: "Descargar PDF",
+            createInvoice: "Crear Factura",
+            invoiceNumber: "Número de Factura",
+            recipient: "Destinatario",
+            pdfFile: "Archivo PDF",
+            invoiceCreated: "Factura creada correctamente",
+            errorCreating: "Error al crear la factura",
             errorLoading: "Error al cargar las facturas"
         },
         general: {
@@ -160,7 +218,9 @@ const MESSAGES = {
             register: "Registrarse",
             connectionError: "Error de conexión. Por favor, verifica que el servidor esté corriendo en http://localhost:3000",
             back: "Volver al inicio",
-            languages: "Idiomas"
+            languages: "Idiomas",
+            cancel: "Cancelar",
+            loading: "Cargando..."
         },
     },
     en: {
@@ -288,6 +348,9 @@ const MESSAGES = {
             phone: "Phone",
             country: "Country",
             imageUrl: "Image URL",
+            profileImage: "Profile Image",
+            dropImageHere: "Drop an image here",
+            selectImage: "Select Image",
             saveChanges: "Save Changes",
             loading: "Loading contacts...",
             errorLoadingContacts: "Error loading contacts",
@@ -301,6 +364,14 @@ const MESSAGES = {
             filterAll: "All",
             filterPending: "Pending",
             filterPaid: "Paid",
+            filterAllType: "All",
+            filterIssued: "Issued",
+            filterReceived: "Received",
+            sortBy: "Sort by",
+            sortIssueDate: "Issue date",
+            sortDueDate: "Due date",
+            sortPaymentDate: "Payment date",
+            sortAmount: "Amount",
             loading: "Loading invoices...",
             noInvoices: "You have no invoices",
             noInvoicesDesc: "When you receive or issue invoices, they will appear here",
@@ -312,7 +383,19 @@ const MESSAGES = {
             received: "Received",
             issueDate: "Issue date",
             dueDate: "Due date",
+            paymentDate: "Payment date",
             amount: "Amount",
+            subject: "Subject",
+            description: "Description",
+            issuer: "Issuer",
+            pdfDocument: "PDF Document",
+            downloadPdf: "Download PDF",
+            createInvoice: "Create Invoice",
+            invoiceNumber: "Invoice Number",
+            recipient: "Recipient",
+            pdfFile: "PDF File",
+            invoiceCreated: "Invoice created successfully",
+            errorCreating: "Error creating invoice",
             errorLoading: "Error loading invoices"
         },
         general: {
@@ -320,15 +403,39 @@ const MESSAGES = {
             logout: "Logout",
             login: "Login",
             register: "Register",
-            connectionError: "Connection error. Please ensure the server is running at http://localhost:3000",
-            back: "Back to Home",
-            languages: "Languages"
-        }
+            connectionError: "Connection error. Please verify that the server is running at http://localhost:3000",
+            back: "Back to home",
+            languages: "Languages",
+            cancel: "Cancel",
+            loading: "Loading..."
+        },
     }
 };
 
+/**
+ * Variable that stores the current language
+ * Initialized from localStorage or defaults to 'es'
+ * 
+ * @type {string}
+ */
 let currentLang = localStorage.getItem('lang') || 'es';
 
+/**
+ * Sets the application's active language
+ * 
+ * @function setLanguage
+ * @param {string} lang - Language code ('es' | 'en')
+ * @returns {void}
+ * 
+ * @description
+ * Changes the active language and persists it in localStorage.
+ * After calling this function, the page should be reloaded
+ * to apply translations.
+ * 
+ * @example
+ * i18n.setLanguage('en');
+ * location.reload();
+ */
 function setLanguage(lang) {
     if (MESSAGES[lang]) {
         currentLang = lang;
@@ -337,6 +444,22 @@ function setLanguage(lang) {
 }
 
 
+/**
+ * Gets a translation using dot notation
+ * 
+ * @function t
+ * @param {string} key - Path to translation (e.g., 'login.email', 'country.countries.ES')
+ * @returns {string} Found translation or original key if not found
+ * 
+ * @description
+ * Navigates through MESSAGES object using key with dots as separator.
+ * If translation is not found, returns original key as fallback.
+ * 
+ * @example
+ * i18n.t('login.email')              // "Correo electrónico" (ES) or "Email" (EN)
+ * i18n.t('country.countries.ES')     // "España" (ES) or "Spain" (EN)
+ * i18n.t('register.errors.required') // "Este campo es obligatorio" (ES)
+ */
 function t(key) {
     const keys = key.split('.');
     let result = MESSAGES[currentLang];
@@ -347,6 +470,19 @@ function t(key) {
     return result;
 }
 
+/**
+ * Global i18n system API
+ * 
+ * @namespace i18n
+ * @global
+ * @property {function} setLanguage - Sets the active language
+ * @property {function} t - Gets translation by key
+ * @property {string} currentLang - Current language getter (readonly)
+ * 
+ * @description
+ * Object exposed globally in window for access from any script.
+ * Provides all internationalization functionality.
+ */
 window.i18n = {
     setLanguage,
     t,
