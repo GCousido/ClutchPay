@@ -170,8 +170,8 @@ Dashboard-specific styles:
 
 Supported languages:
 
-- **English (en)**: Default language
-- **Spanish (es)**: Secondary language
+- **English (en)**: Secondary language
+- **Spanish (es)**: Default language
 
 ### Implementation
 
