@@ -1,0 +1,46 @@
+# -*- mode: ruby -*-
+# Vagrantfile para probar el instalador en Debian 11 real
+# 
+# Requisitos: Instalar Vagrant + VirtualBox
+#   - https://www.vagrantup.com/downloads
+#   - https://www.virtualbox.org/wiki/Downloads
+#
+# Uso:
+#   cd utils_dev
+#   vagrant up          # Crear y arrancar la VM
+#   vagrant ssh         # Conectar a la VM
+#   bash /vagrant/../installer.sh   # Ejecutar el instalador
+#   vagrant destroy -f  # Eliminar la VM para empezar de nuevo
+#   vagrant up          # Recrear desde cero (rápido, ~1-2 min)
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "debian/bullseye64"
+  config.vm.hostname = "clutchpay-test"
+  
+  # Puertos
+  config.vm.network "forwarded_port", guest: 80, host: 8080    # Frontend
+  config.vm.network "forwarded_port", guest: 3000, host: 3000  # Backend
+  config.vm.network "forwarded_port", guest: 5432, host: 5433  # PostgreSQL
+
+  config.vm.network "private_network", ip: "192.168.56.10"
+  
+  # Solo copiar el instalador
+  config.vm.synced_folder ".", "/vagrant"
+  
+  # Recursos de la VM
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = "2048"
+    vb.cpus = 2
+    vb.name = "ClutchPay-Test"
+  end
+  
+  # Provisioning básico
+  config.vm.provision "shell", inline: <<-SHELL
+    echo "=== VM Debian 11 lista para probar el instalador ==="
+    echo ""
+    echo "Para ejecutar el instalador:"
+    echo "  sudo bash /vagrant/installer.sh"
+    echo ""
+    echo "El instalador está en /vagrant/installer.sh"
+  SHELL
+end

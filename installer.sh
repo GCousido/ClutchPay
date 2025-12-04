@@ -95,8 +95,8 @@ cleanup() {
     # Remove database if created
     if [ "$DB_CONFIGURED" = true ]; then
         log_step "Removing database..."
-        $SUDO_CMD -u postgres psql -c "DROP DATABASE IF EXISTS ${DB_NAME};" > /dev/null 2>&1 || true
-        $SUDO_CMD -u postgres psql -c "DROP USER IF EXISTS ${DB_USER};" > /dev/null 2>&1 || true
+        su - postgres -c "psql -c 'DROP DATABASE IF EXISTS ${DB_NAME};'" > /dev/null 2>&1 || true
+        su - postgres -c "psql -c 'DROP USER IF EXISTS ${DB_USER};'" > /dev/null 2>&1 || true
     fi
 
     # Remove cloned repository if we created it in this run
@@ -118,13 +118,11 @@ on_error() {
 trap 'on_error $LINENO' ERR
 trap 'cleanup; exit 1' INT TERM
 
-# Configuration
-INSTALL_DIR="/opt/clutchpay"
+# Default Configuration (will be overridden by user input)
+DEFAULT_INSTALL_DIR="/opt/clutchpay"
 BACKEND_SUBDIR="back"
-BACKEND_DIR="$INSTALL_DIR/$BACKEND_SUBDIR"
-FRONTEND_DIR="$INSTALL_DIR/frontend"
-BACKEND_PORT=3000
-FRONTEND_PORT=80
+DEFAULT_BACKEND_PORT=3000
+DEFAULT_FRONTEND_PORT=80
 
 # Database credentials (from .env defaults)
 DB_NAME="clutchpay_db"
@@ -148,6 +146,205 @@ cat << "EOF"
 EOF
 echo -e "${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+
+################################################################################
+# Interactive Configuration
+################################################################################
+log_header "Configuration Options"
+
+# Function to check if port is in use
+check_port() {
+    local port=$1
+    if ss -tuln 2>/dev/null | grep -q ":${port} " || netstat -tuln 2>/dev/null | grep -q ":${port} "; then
+        return 0  # Port is in use
+    fi
+    return 1  # Port is free
+}
+
+# Function to validate port number
+validate_port() {
+    local port=$1
+    if [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ]; then
+        return 0
+    fi
+    return 1
+}
+
+# Function to validate directory path
+validate_directory() {
+    local dir=$1
+    if [[ "$dir" =~ ^/ ]]; then
+        return 0
+    fi
+    return 1
+}
+
+echo ""
+echo -e "${CYAN}${BOLD}Please configure the installation settings:${NC}"
+echo ""
+
+# === Installation Directory ===
+echo -e "${YELLOW}Installation Directory${NC}"
+echo -e "  Default: ${GREEN}$DEFAULT_INSTALL_DIR${NC}"
+echo -n "  Enter installation directory (press Enter for default): "
+read -r USER_INSTALL_DIR
+
+if [ -z "$USER_INSTALL_DIR" ]; then
+    INSTALL_DIR="$DEFAULT_INSTALL_DIR"
+else
+    if validate_directory "$USER_INSTALL_DIR"; then
+        INSTALL_DIR="$USER_INSTALL_DIR"
+    else
+        log_warning "Invalid path. Using default: $DEFAULT_INSTALL_DIR"
+        INSTALL_DIR="$DEFAULT_INSTALL_DIR"
+    fi
+fi
+
+# Check if directory already exists
+if [ -d "$INSTALL_DIR" ]; then
+    log_warning "Directory $INSTALL_DIR already exists!"
+    echo -n "  Do you want to overwrite it? (y/N): "
+    read -r OVERWRITE_DIR
+    if [[ ! "$OVERWRITE_DIR" =~ ^[Yy]$ ]]; then
+        log_error "Installation cancelled. Please choose a different directory."
+        exit 1
+    fi
+fi
+
+BACKEND_DIR="$INSTALL_DIR/$BACKEND_SUBDIR"
+FRONTEND_DIR="$INSTALL_DIR/frontend"
+log_success "Installation directory: $INSTALL_DIR"
+
+echo ""
+
+# === Backend Port ===
+echo -e "${YELLOW}Backend Port (Next.js API)${NC}"
+echo -e "  Default: ${GREEN}$DEFAULT_BACKEND_PORT${NC}"
+
+# Check if default port is in use
+if check_port "$DEFAULT_BACKEND_PORT"; then
+    log_warning "Port $DEFAULT_BACKEND_PORT is currently in use!"
+fi
+
+echo -n "  Enter backend port (press Enter for default): "
+read -r USER_BACKEND_PORT
+
+if [ -z "$USER_BACKEND_PORT" ]; then
+    BACKEND_PORT="$DEFAULT_BACKEND_PORT"
+else
+    if validate_port "$USER_BACKEND_PORT"; then
+        BACKEND_PORT="$USER_BACKEND_PORT"
+    else
+        log_warning "Invalid port number. Using default: $DEFAULT_BACKEND_PORT"
+        BACKEND_PORT="$DEFAULT_BACKEND_PORT"
+    fi
+fi
+
+# Warn if port is in use
+if check_port "$BACKEND_PORT"; then
+    log_warning "Port $BACKEND_PORT is currently in use. The service may fail to start."
+    echo -n "  Continue anyway? (y/N): "
+    read -r CONTINUE_BACKEND
+    if [[ ! "$CONTINUE_BACKEND" =~ ^[Yy]$ ]]; then
+        log_error "Installation cancelled. Please choose a different port."
+        exit 1
+    fi
+fi
+log_success "Backend port: $BACKEND_PORT"
+
+echo ""
+
+# === Frontend Port (Apache) ===
+echo -e "${YELLOW}Frontend Port (Apache Web Server)${NC}"
+echo -e "  Default: ${GREEN}$DEFAULT_FRONTEND_PORT${NC}"
+
+# Check if default port is in use
+if check_port "$DEFAULT_FRONTEND_PORT"; then
+    log_warning "Port $DEFAULT_FRONTEND_PORT is currently in use!"
+    # Check what's using it
+    if command -v ss &> /dev/null; then
+        USING_80=$(ss -tlnp 2>/dev/null | grep ":80 " | head -1 || true)
+        if [ -n "$USING_80" ]; then
+            log_info "Currently using port 80: $USING_80"
+        fi
+    fi
+fi
+
+echo -n "  Enter frontend port (press Enter for default): "
+read -r USER_FRONTEND_PORT
+
+if [ -z "$USER_FRONTEND_PORT" ]; then
+    FRONTEND_PORT="$DEFAULT_FRONTEND_PORT"
+else
+    if validate_port "$USER_FRONTEND_PORT"; then
+        FRONTEND_PORT="$USER_FRONTEND_PORT"
+    else
+        log_warning "Invalid port number. Using default: $DEFAULT_FRONTEND_PORT"
+        FRONTEND_PORT="$DEFAULT_FRONTEND_PORT"
+    fi
+fi
+
+# Warn if port is in use
+if check_port "$FRONTEND_PORT"; then
+    log_warning "Port $FRONTEND_PORT is currently in use."
+    echo -e "  ${YELLOW}Options:${NC}"
+    echo -e "    1) Stop the service using port $FRONTEND_PORT"
+    echo -e "    2) Choose a different port"
+    echo -e "    3) Continue anyway (may cause conflicts)"
+    echo -e "    4) Cancel installation"
+    echo -n "  Choose option (1-4): "
+    read -r PORT_OPTION
+    
+    case "$PORT_OPTION" in
+        1)
+            log_step "Attempting to stop service using port $FRONTEND_PORT..."
+            # Try to identify and stop the service
+            if systemctl is-active --quiet apache2; then
+                $SUDO_CMD systemctl stop apache2
+                log_success "Stopped existing apache2 service"
+            elif systemctl is-active --quiet nginx; then
+                $SUDO_CMD systemctl stop nginx
+                log_success "Stopped nginx service"
+            else
+                log_warning "Could not identify the service. You may need to stop it manually."
+            fi
+            ;;
+        2)
+            echo -n "  Enter a new port: "
+            read -r NEW_PORT
+            if validate_port "$NEW_PORT"; then
+                FRONTEND_PORT="$NEW_PORT"
+            else
+                log_error "Invalid port. Installation cancelled."
+                exit 1
+            fi
+            ;;
+        3)
+            log_warning "Continuing with port $FRONTEND_PORT despite conflict..."
+            ;;
+        *)
+            log_error "Installation cancelled."
+            exit 1
+            ;;
+    esac
+fi
+log_success "Frontend port: $FRONTEND_PORT"
+
+echo ""
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}${BOLD}Configuration Summary:${NC}"
+echo -e "  Installation directory: ${CYAN}$INSTALL_DIR${NC}"
+echo -e "  Backend port:          ${CYAN}$BACKEND_PORT${NC}"
+echo -e "  Frontend port:         ${CYAN}$FRONTEND_PORT${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -n "Proceed with installation? (Y/n): "
+read -r PROCEED
+if [[ "$PROCEED" =~ ^[Nn]$ ]]; then
+    log_error "Installation cancelled by user."
+    exit 0
+fi
+echo ""
 
 ################################################################################
 # Check sudo availability
@@ -314,23 +511,23 @@ log_step "Configuring database..."
 DB_CONFIGURED=true
 
 # Check if user already exists
-if $SUDO_CMD -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" | grep -q 1; then
+if su - postgres -c "psql -tAc \"SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'\"" 2>/dev/null | grep -q 1; then
     log_info "Database user ${DB_USER} already exists"
 else
-    $SUDO_CMD -u postgres psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';" > /dev/null 2>&1
+    su - postgres -c "psql -c \"CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';\"" > /dev/null 2>&1
     log_success "Database user created"
 fi
 
 # Check if database already exists
-if $SUDO_CMD -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" | grep -q 1; then
+if su - postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'\"" 2>/dev/null | grep -q 1; then
     log_info "Database ${DB_NAME} already exists"
 else
-    $SUDO_CMD -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};" > /dev/null 2>&1
+    su - postgres -c "psql -c \"CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};\"" > /dev/null 2>&1
     log_success "Database created"
 fi
 
 # Grant privileges
-$SUDO_CMD -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};" > /dev/null 2>&1
+su - postgres -c "psql -c \"GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};\"" > /dev/null 2>&1
 log_success "Database configured: ${DB_NAME}"
 
 ################################################################################
@@ -535,8 +732,25 @@ $SUDO_CMD cp -r "$FRONTEND_DIR"/* "$APACHE_DOC_ROOT/"
 $SUDO_CMD chown -R www-data:www-data "$APACHE_DOC_ROOT"
 log_success "Frontend files copied"
 
+# Update config.js with correct backend port (if exists)
+if [ -f "$APACHE_DOC_ROOT/JS/config.js" ]; then
+    log_step "Configuring frontend to use backend port ${BACKEND_PORT}..."
+    $SUDO_CMD sed -i "s|:3000|:${BACKEND_PORT}|g" "$APACHE_DOC_ROOT/JS/config.js"
+    log_success "Frontend configuration updated"
+fi
+
 # Create Apache virtual host configuration
 log_step "Creating Apache virtual host configuration..."
+
+# If using non-standard port, add Listen directive
+if [ "$FRONTEND_PORT" -ne 80 ]; then
+    # Check if port is already configured in ports.conf
+    if ! grep -q "Listen $FRONTEND_PORT" /etc/apache2/ports.conf 2>/dev/null; then
+        log_step "Adding Listen directive for port $FRONTEND_PORT..."
+        echo "Listen $FRONTEND_PORT" | $SUDO_CMD tee -a /etc/apache2/ports.conf > /dev/null
+    fi
+fi
+
 $SUDO_CMD tee /etc/apache2/sites-available/clutchpay.conf > /dev/null << EOF
 <VirtualHost *:${FRONTEND_PORT}>
     ServerName ${SERVER_IP}
