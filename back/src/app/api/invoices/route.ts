@@ -1,6 +1,6 @@
 // app/api/invoices/route.ts
 import { getPagination, handleError, requireAuth, validateBody } from '@/libs/api-helpers';
-import { uploadPdf } from '@/libs/cloudinary';
+import { getSignedPdfUrl, uploadPdf } from '@/libs/cloudinary';
 import { db } from '@/libs/db';
 import { invoiceCreateSchema, invoiceListQuerySchema } from '@/libs/validations/invoice';
 import { Prisma } from '@prisma/client';
@@ -87,6 +87,13 @@ export async function GET(request: Request) {
 		]);
 
 		const totalPages = Math.max(1, Math.ceil(total / limit));
+		// Generate signed URLs for PDFs
+		const invoicesWithSignedUrls = invoices.map(invoice => ({
+			...invoice,
+			invoicePdfUrl: invoice.invoicePdfUrl 
+				? getSignedPdfUrl(invoice.invoicePdfUrl)
+				: null
+		}));
 
 		return NextResponse.json({
 			meta: {
@@ -97,7 +104,8 @@ export async function GET(request: Request) {
 				nextPage: page < totalPages ? page + 1 : null,
 				prevPage: page > 1 ? page - 1 : null,
 			},
-			data: invoices,
+			//FIXME: MODIFICADO PARA LO DE CLOUDINARY
+			data: invoicesWithSignedUrls,
 		});
 	} catch (error) {
 		return handleError(error);
