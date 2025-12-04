@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ################################################################################
-#                   ClutchPay Docker Installation Script
+#                   ClutchPay Native Installation Script
 ################################################################################
 # Automated installation for Debian 11
 # - PostgreSQL database
@@ -62,13 +62,17 @@ log_step() {
 
 # Global state flags for cleanup
 REPO_CLONED=false
-DB_STARTED=false
-FRONTEND_STARTED=false
+DB_CONFIGURED=false
+APACHE_CONFIGURED=false
 SERVICE_INSTALLED=false
 SUCCESS=false
 
 # Cleanup routine on any failure
 cleanup() {
+    if [ "$SUCCESS" = true ]; then
+        return
+    fi
+    
     log_warning "Installation failed. Starting cleanup..."
 
     # Stop and remove backend systemd service if created
@@ -80,16 +84,19 @@ cleanup() {
         $SUDO_CMD systemctl daemon-reload > /dev/null 2>&1 || true
     fi
 
-    # Bring down frontend container
-    if [ "$FRONTEND_STARTED" = true ] && [ -d "${FRONTEND_DIR:-}/docker" ]; then
-        log_step "Stopping frontend containers..."
-        (cd "${FRONTEND_DIR:-}/docker" && docker compose down -v --rmi local > /dev/null 2>&1) || true
+    # Remove Apache config if created
+    if [ "$APACHE_CONFIGURED" = true ]; then
+        log_step "Removing Apache configuration..."
+        $SUDO_CMD a2dissite clutchpay.conf > /dev/null 2>&1 || true
+        $SUDO_CMD rm -f /etc/apache2/sites-available/clutchpay.conf || true
+        $SUDO_CMD systemctl reload apache2 > /dev/null 2>&1 || true
     fi
 
-    # Bring down database container
-    if [ "$DB_STARTED" = true ] && [ -d "${BACKEND_DIR:-}/docker" ]; then
-        log_step "Stopping database containers..."
-        (cd "${BACKEND_DIR:-}/docker" && docker compose down -v > /dev/null 2>&1) || true
+    # Remove database if created
+    if [ "$DB_CONFIGURED" = true ]; then
+        log_step "Removing database..."
+        $SUDO_CMD -u postgres psql -c "DROP DATABASE IF EXISTS ${DB_NAME};" > /dev/null 2>&1 || true
+        $SUDO_CMD -u postgres psql -c "DROP USER IF EXISTS ${DB_USER};" > /dev/null 2>&1 || true
     fi
 
     # Remove cloned repository if we created it in this run
@@ -135,9 +142,9 @@ cat << "EOF"
  | |    | |_   _| |_ ___| |__ | |_) | __ _ _   _
  | |    | | | | | __/ __| '_ \|  _ / / _` | | | |
  | |____| | |_| | || (__| | | | |   | (_| | |_| |
-  \_____|_|\__,_|\__\___|_| |_| |   \__,_|\__, |
+  \_____|_|\__,_|\__\___|_| |_| |   \__,_|\__,  |
                                             __/ |
-   Docker Installation Script - Debian 11  |___/
+          Installation Script - Debian 11  |___/
 EOF
 echo -e "${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
@@ -260,66 +267,97 @@ else
     log_success "Git already installed"
 fi
 
-# Install Docker
-if ! command -v docker &> /dev/null; then
-    log_step "Installing Docker..."
-    
-    $SUDO_CMD apt-get install -y ca-certificates gnupg > /dev/null 2>&1
-    
-    $SUDO_CMD install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/debian/gpg | $SUDO_CMD gpg --dearmor -o /etc/apt/keyrings/docker.gpg > /dev/null 2>&1
-    $SUDO_CMD chmod a+r /etc/apt/keyrings/docker.gpg
-    
-    echo \
-      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
-      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-      $SUDO_CMD tee /etc/apt/sources.list.d/docker.list > /dev/null
-    
-    $SUDO_CMD apt-get update -qq
-    $SUDO_CMD apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin > /dev/null 2>&1
-    
-    $SUDO_CMD systemctl start docker
-    $SUDO_CMD systemctl enable docker > /dev/null 2>&1
-    
-    # Add current user to docker group if not root
-    if [ "$EUID" -ne 0 ]; then
-        $SUDO_CMD usermod -aG docker $USER
-        log_success "Docker installed"
-        log_success "User '$USER' added to docker group"
-        
-        # Activate the docker group immediately without logout
-        log_info "Activating docker group for current session..."
-        exec sudo -u $USER bash -c "SCRIPT_PATH='$SCRIPT_PATH' bash '$SCRIPT_PATH' $*"
-    fi
-    
-    log_success "Docker installed and started"
-else
-    log_success "Docker already installed"
-    
-    # Check if docker daemon is running
-    if ! systemctl is-active --quiet docker; then
-        $SUDO_CMD systemctl start docker
-    fi
-    
-    # Check if user has docker permissions (only if not root)
-    if [ "$EUID" -ne 0 ]; then
-        if ! docker ps > /dev/null 2>&1; then
-            log_warning "Docker permissions issue detected"
-            
-            # Check if user is in docker group
-            if ! groups $USER | grep -q '\bdocker\b'; then
-                log_step "Adding user '$USER' to docker group..."
-                $SUDO_CMD usermod -aG docker $USER
-                log_success "User added to docker group"
-            fi
-            
-            # Activate the docker group immediately without logout
-            log_info "Activating docker group for current session..."
-            exec sudo -u $USER bash -c "SCRIPT_PATH='$SCRIPT_PATH' bash '$SCRIPT_PATH' $*"
-        fi
-    fi
+################################################################################
+# Detect Server IP Address
+################################################################################
+log_header "Detecting Server IP Address"
+
+# Get the primary IP address (not 127.0.0.1)
+SERVER_IP=$(hostname -I | awk '{print $1}')
+
+if [ -z "$SERVER_IP" ]; then
+    log_warning "Could not auto-detect IP address"
+    echo -e "${YELLOW}Please enter the server IP address:${NC}"
+    read -r SERVER_IP
 fi
 
+log_success "Server IP detected: $SERVER_IP"
+echo -e "${YELLOW}Is this IP correct? (y/n)${NC}"
+read -r confirm
+if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+    echo -e "${YELLOW}Please enter the correct server IP address:${NC}"
+    read -r SERVER_IP
+    log_success "Using IP: $SERVER_IP"
+fi
+
+################################################################################
+# Install PostgreSQL (Native - No Docker)
+################################################################################
+log_header "Installing PostgreSQL (Native)"
+
+if ! command -v psql &> /dev/null; then
+    log_step "Installing PostgreSQL..."
+    $SUDO_CMD apt-get install -y postgresql postgresql-contrib > /dev/null 2>&1
+    log_success "PostgreSQL installed"
+else
+    log_success "PostgreSQL already installed"
+fi
+
+# Ensure PostgreSQL is running
+log_step "Starting PostgreSQL service..."
+$SUDO_CMD systemctl start postgresql
+$SUDO_CMD systemctl enable postgresql > /dev/null 2>&1
+log_success "PostgreSQL service started"
+
+# Configure database
+log_step "Configuring database..."
+DB_CONFIGURED=true
+
+# Check if user already exists
+if $SUDO_CMD -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" | grep -q 1; then
+    log_info "Database user ${DB_USER} already exists"
+else
+    $SUDO_CMD -u postgres psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';" > /dev/null 2>&1
+    log_success "Database user created"
+fi
+
+# Check if database already exists
+if $SUDO_CMD -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" | grep -q 1; then
+    log_info "Database ${DB_NAME} already exists"
+else
+    $SUDO_CMD -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};" > /dev/null 2>&1
+    log_success "Database created"
+fi
+
+# Grant privileges
+$SUDO_CMD -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};" > /dev/null 2>&1
+log_success "Database configured: ${DB_NAME}"
+
+################################################################################
+# Install Apache (Native - No Docker)
+################################################################################
+log_header "Installing Apache (Native)"
+
+if ! command -v apache2 &> /dev/null; then
+    log_step "Installing Apache..."
+    $SUDO_CMD apt-get install -y apache2 > /dev/null 2>&1
+    log_success "Apache installed"
+else
+    log_success "Apache already installed"
+fi
+
+# Enable required modules
+log_step "Enabling Apache modules..."
+$SUDO_CMD a2enmod proxy proxy_http rewrite headers > /dev/null 2>&1
+log_success "Apache modules enabled"
+
+# Start Apache
+log_step "Starting Apache service..."
+$SUDO_CMD systemctl start apache2
+$SUDO_CMD systemctl enable apache2 > /dev/null 2>&1
+log_success "Apache service started"
+
+################################################################################
 # Install Node.js 20.x
 log_step "Checking Node.js version..."
 NODE_INSTALLED=false
@@ -415,56 +453,20 @@ DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}?s
 # Server Configuration
 BACKEND_PORT=${BACKEND_PORT}
 NODE_ENV=production
-NEXT_PUBLIC_API_URL=http://localhost:${BACKEND_PORT}
+NEXT_PUBLIC_API_URL=http://${SERVER_IP}:${BACKEND_PORT}
 
-# Authentication
-NEXTAUTH_URL=http://localhost:${BACKEND_PORT}
+# Authentication - Using SERVER_IP for external access
+NEXTAUTH_URL=http://${SERVER_IP}:${BACKEND_PORT}
 NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
 JWT_SECRET=${JWT_SECRET}
 
 # Frontend
-FRONTEND_URL=http://localhost:${FRONTEND_PORT}
+FRONTEND_URL=http://${SERVER_IP}:${FRONTEND_PORT}
 FRONTEND_PORT=${FRONTEND_PORT}
+SERVER_IP=${SERVER_IP}
 EOF
 
-log_success "Backend .env created with secure secrets"
-
-# Create Docker .env for database
-cat > "$BACKEND_DIR/docker/.env" << EOF
-POSTGRES_DB=${DB_NAME}
-POSTGRES_USER=${DB_USER}
-POSTGRES_PASSWORD=${DB_PASSWORD}
-EOF
-
-log_success "Docker .env created"
-
-################################################################################
-# Start Database
-################################################################################
-log_header "Starting PostgreSQL Database"
-
-cd "$BACKEND_DIR/docker"
-log_step "Starting PostgreSQL container..."
-docker compose up -d
-DB_STARTED=true
-sleep 3
-
-# Wait for database
-log_step "Waiting for database to be ready..."
-DB_READY=false
-for i in {1..30}; do
-    if docker compose exec -T postgres pg_isready -U "$DB_USER" -d "$DB_NAME" > /dev/null 2>&1; then
-        log_success "Database is ready!"
-        DB_READY=true
-        break
-    fi
-    sleep 1
-done
-if [ "$DB_READY" != true ]; then
-    log_error "Database did not become ready in time"
-    cleanup
-    exit 1
-fi
+log_success "Backend .env created"
 
 ################################################################################
 # Build Backend
@@ -490,8 +492,10 @@ pnpm prisma migrate deploy > /dev/null 2>&1
 log_success "Database migrations completed"
 
 log_step "Building Next.js application (standalone mode)..."
-# Ensure FRONTEND_URL is available during build for CORS config
-export FRONTEND_URL="http://localhost:${FRONTEND_PORT}"
+# Set environment variables for build
+export FRONTEND_URL="http://${SERVER_IP}:${FRONTEND_PORT}"
+export SERVER_IP="${SERVER_IP}"
+
 if ! pnpm build 2>&1 | tee /tmp/clutchpay-build.log | tail -20; then
     log_error "Build failed. Last 20 lines of output shown above."
     log_error "Full build log saved to: /tmp/clutchpay-build.log"
@@ -515,29 +519,57 @@ log_header "Configuring Frontend"
 
 cd "$FRONTEND_DIR"
 
-# Update frontend JS to point to correct backend
-log_step "Configuring frontend API endpoint..."
-if [ -f "$FRONTEND_DIR/JS/auth.js" ]; then
-    sed -i "s|const API_BASE_URL = .*|const API_BASE_URL = 'http://localhost:${BACKEND_PORT}';|g" "$FRONTEND_DIR/JS/auth.js"
-fi
 
-# Create Docker .env
-cat > "$FRONTEND_DIR/docker/.env" << EOF
-FRONTEND_PORT=${FRONTEND_PORT}
+################################################################################
+# Configure Apache Virtual Host
+################################################################################
+log_header "Configuring Apache Virtual Host"
+
+APACHE_CONFIGURED=true
+
+# Copy frontend files to Apache document root
+APACHE_DOC_ROOT="/var/www/clutchpay"
+log_step "Copying frontend files to ${APACHE_DOC_ROOT}..."
+$SUDO_CMD mkdir -p "$APACHE_DOC_ROOT"
+$SUDO_CMD cp -r "$FRONTEND_DIR"/* "$APACHE_DOC_ROOT/"
+$SUDO_CMD chown -R www-data:www-data "$APACHE_DOC_ROOT"
+log_success "Frontend files copied"
+
+# Create Apache virtual host configuration
+log_step "Creating Apache virtual host configuration..."
+$SUDO_CMD tee /etc/apache2/sites-available/clutchpay.conf > /dev/null << EOF
+<VirtualHost *:${FRONTEND_PORT}>
+    ServerName ${SERVER_IP}
+    ServerAdmin webmaster@localhost
+    DocumentRoot ${APACHE_DOC_ROOT}
+
+    <Directory ${APACHE_DOC_ROOT}>
+        Options -Indexes +FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    ErrorLog \${APACHE_LOG_DIR}/clutchpay-error.log
+    CustomLog \${APACHE_LOG_DIR}/clutchpay-access.log combined
+</VirtualHost>
 EOF
 
-log_success "Frontend configured"
+# Disable default site and enable clutchpay
+log_step "Enabling ClutchPay site..."
+$SUDO_CMD a2dissite 000-default.conf > /dev/null 2>&1 || true
+$SUDO_CMD a2ensite clutchpay.conf > /dev/null 2>&1
 
-################################################################################
-# Start Frontend
-################################################################################
-log_header "Starting Frontend (Apache)"
+# Test Apache configuration
+log_step "Testing Apache configuration..."
+if ! $SUDO_CMD apache2ctl configtest 2>&1 | grep -q "Syntax OK"; then
+    log_error "Apache configuration test failed"
+    cleanup
+    exit 1
+fi
 
-cd "$FRONTEND_DIR/docker"
-log_step "Building and starting Apache container..."
-docker compose up -d --build > /dev/null 2>&1
-FRONTEND_STARTED=true
-log_success "Frontend container started"
+# Reload Apache
+$SUDO_CMD systemctl reload apache2
+log_success "Apache configured and reloaded"
 
 ################################################################################
 # Create Systemd Service for Backend
@@ -548,8 +580,8 @@ log_step "Creating systemd service..."
 $SUDO_CMD tee /etc/systemd/system/clutchpay-backend.service > /dev/null << EOF
 [Unit]
 Description=ClutchPay Backend API
-After=network.target docker.service
-Requires=docker.service
+After=network.target postgresql.service
+Requires=postgresql.service
 
 [Service]
 Type=simple
@@ -560,6 +592,8 @@ Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
+Environment=NODE_ENV=production
+Environment=HOSTNAME=0.0.0.0
 
 [Install]
 WantedBy=multi-user.target
@@ -570,11 +604,32 @@ $SUDO_CMD systemctl daemon-reload
 $SUDO_CMD systemctl enable clutchpay-backend.service > /dev/null 2>&1
 $SUDO_CMD systemctl start clutchpay-backend.service
 
-log_success "Backend service created and started"
+# Wait for backend to start
+log_step "Waiting for backend to start..."
+sleep 5
+
+if $SUDO_CMD systemctl is-active --quiet clutchpay-backend.service; then
+    log_success "Backend service created and started"
+else
+    log_warning "Backend service may have issues. Check with: journalctl -u clutchpay-backend -f"
+fi
+
+################################################################################
+# Configure Firewall (if ufw is installed)
+################################################################################
+if command -v ufw &> /dev/null; then
+    log_header "Configuring Firewall"
+    
+    log_step "Opening ports 80 and ${BACKEND_PORT}..."
+    $SUDO_CMD ufw allow 80/tcp > /dev/null 2>&1 || true
+    $SUDO_CMD ufw allow ${BACKEND_PORT}/tcp > /dev/null 2>&1 || true
+    log_success "Firewall rules added"
+fi
 
 ################################################################################
 # Installation Complete
 ################################################################################
+SUCCESS=true
 log_header "Installation Complete! 🎉"
 
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -585,11 +640,11 @@ echo -e "${CYAN}📂 Installation Directory:${NC}"
 echo -e "   ${INSTALL_DIR}\n"
 
 echo -e "${CYAN}🌐 Access URLs:${NC}"
-echo -e "   Frontend: ${GREEN}http://localhost:${FRONTEND_PORT}${NC}"
-echo -e "   Backend:  ${GREEN}http://localhost:${BACKEND_PORT}${NC}\n"
+echo -e "   Frontend: ${GREEN}http://${SERVER_IP}:${FRONTEND_PORT}${NC}"
+echo -e "   Backend:  ${GREEN}http://${SERVER_IP}:${BACKEND_PORT}${NC}\n"
 
 echo -e "${CYAN}🗄️  Database:${NC}"
-echo -e "   Type:     PostgreSQL 15 (Docker)"
+echo -e "   Type:     PostgreSQL (Native)"
 echo -e "   Port:     5432"
 echo -e "   Database: ${DB_NAME}"
 echo -e "   User:     ${DB_USER}\n"
@@ -598,7 +653,15 @@ echo -e "${CYAN}🔧 Service Management:${NC}"
 echo -e "   ${YELLOW}Backend:${NC}"
 echo -e "     systemctl status clutchpay-backend"
 echo -e "     systemctl restart clutchpay-backend"
-echo -e "     journalctl -u clutchpay-backend -f\n"
+echo -e "     journalctl -u clutchpay-backend -f"
+echo -e ""
+echo -e "   ${YELLOW}Apache (Frontend):${NC}"
+echo -e "     systemctl status apache2"
+echo -e "     systemctl restart apache2"
+echo -e ""
+echo -e "   ${YELLOW}PostgreSQL:${NC}"
+echo -e "     systemctl status postgresql"
+echo -e "     systemctl restart postgresql\n"
 
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN}  Thank you for installing ClutchPay!${NC}"

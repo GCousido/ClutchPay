@@ -21,7 +21,10 @@ class Auth {
     //constructor
     constructor() {
         this.currentUser = null;
-        this.API_BASE_URL = 'http://localhost:3000';
+        // Use global config if available, otherwise default to localhost
+        this.API_BASE_URL = (window.CLUTCHPAY_CONFIG && window.CLUTCHPAY_CONFIG.API_BASE_URL) 
+            ? window.CLUTCHPAY_CONFIG.API_BASE_URL 
+            : 'http://localhost:3000';
     }
 
     /**
