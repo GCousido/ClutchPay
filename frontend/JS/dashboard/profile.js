@@ -65,10 +65,10 @@ class DashboardProfile {
             profilePic.src = currentUser.imageUrl;
             profilePic.onerror = function() {
                 this.onerror = null;
-                this.src = '../imagenes/avatar-default.svg';
+                this.src = 'imagenes/avatar-default.svg';
             };
         } else {
-            profilePic.src = '../imagenes/avatar-default.svg';
+            profilePic.src = 'imagenes/avatar-default.svg';
         }
         
         document.getElementById('user-name').textContent = `${currentUser.name} ${currentUser.surnames}`;
@@ -132,10 +132,10 @@ class DashboardProfile {
                 previewImg.src = currentUser.imageUrl;
                 previewImg.onerror = function() {
                     this.onerror = null;
-                    this.src = '../imagenes/avatar-default.svg';
+                    this.src = 'imagenes/avatar-default.svg';
                 };
             } else {
-                previewImg.src = '../imagenes/avatar-default.svg';
+                previewImg.src = 'imagenes/avatar-default.svg';
             }
             
             document.getElementById('edit-profile-modal').style.display = 'flex';

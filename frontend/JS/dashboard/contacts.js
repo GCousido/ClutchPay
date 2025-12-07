@@ -181,10 +181,10 @@ class DashboardContacts {
         const contactsHTML = this.contactsList.map(contact => `
         <div class="contact-item" data-contact-id="${contact.id}">
             <div class="contact-info">
-                <img src="${contact.imageUrl || '../imagenes/avatar-default.svg'}" 
+                <img src="${contact.imageUrl || 'imagenes/avatar-default.svg'}" 
                      alt="${contact.name}" 
                      class="contact-avatar"
-                     onerror="this.src='../imagenes/avatar-default.svg'">
+                     onerror="this.src='imagenes/avatar-default.svg'">
                 <div class="contact-details">
                     <h4>${contact.name} ${contact.surnames || ''}</h4>
                     <p>${contact.email}</p>
