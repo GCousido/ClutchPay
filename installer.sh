@@ -539,6 +539,7 @@ POSTGRES_PASSWORD=${DB_PASSWORD}
 DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}?schema=public"
 
 # Server Configuration
+PORT=${BACKEND_PORT}
 BACKEND_PORT=${BACKEND_PORT}
 NODE_ENV=production
 NEXT_PUBLIC_API_URL=http://${SERVER_IP}:${BACKEND_PORT}
@@ -1257,8 +1258,6 @@ fi
 ################################################################################
 # Clone Repository
 ################################################################################
-# Clone Repository
-################################################################################
 log_header "Downloading ClutchPay"
 
 if [ -d "$INSTALL_DIR" ]; then
@@ -1314,6 +1313,7 @@ POSTGRES_PASSWORD=${DB_PASSWORD}
 DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}?schema=public"
 
 # Server Configuration
+PORT=${BACKEND_PORT}
 BACKEND_PORT=${BACKEND_PORT}
 NODE_ENV=production
 NEXT_PUBLIC_API_URL=http://${SERVER_IP}:${BACKEND_PORT}
@@ -1704,6 +1704,11 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
         
         if ! grep -q "^DATABASE_URL=" "$BACKEND_DIR/.env"; then
             echo "DATABASE_URL=\"postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}?schema=public\"" >> "$BACKEND_DIR/.env"
+            ADDED_VARS=true
+        fi
+
+        if ! grep -q "^PORT=" "$BACKEND_DIR/.env"; then
+            echo "PORT=${DEFAULT_BACKEND_PORT}" >> "$BACKEND_DIR/.env"
             ADDED_VARS=true
         fi
         
