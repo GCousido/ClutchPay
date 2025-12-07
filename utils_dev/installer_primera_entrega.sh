@@ -539,7 +539,7 @@ fi
 log_header "Downloading ClutchPay"
 
 REPO_URL="https://github.com/GCousido/ClutchPay.git"
-REPO_TAG="fix-installer"
+REPO_TAG="primera-entrega"
 
 if [ -d "$INSTALL_DIR" ]; then
     log_warning "Installation directory exists. Backing up..."

@@ -2,7 +2,7 @@ import type { NextConfig } from 'next';
 
 // Get the frontend URL and server IP from environment variables
 const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:80';
-const serverIp = process.env.SERVER_IP || 'localhost';
+const serverIp = (process.env.SERVER_IP || 'localhost').replace(/^https?:\/\//, ''); // Strip protocol if present
 
 // Build list of allowed origins for CORS
 const allowedOrigins = [
