@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ################################################################################
-#                   ClutchPay Native Installation Script
+#                   ClutchPay Installation Script
 ################################################################################
 # Automated installation for Debian 11
 # - PostgreSQL database
@@ -95,8 +95,8 @@ cleanup() {
     # Remove database if created
     if [ "$DB_CONFIGURED" = true ]; then
         log_step "Removing database..."
-        su - postgres -c "psql -c 'DROP DATABASE IF EXISTS ${DB_NAME};'" > /dev/null 2>&1 || true
-        su - postgres -c "psql -c 'DROP USER IF EXISTS ${DB_USER};'" > /dev/null 2>&1 || true
+        sudo -u postgres psql -c "DROP DATABASE IF EXISTS ${DB_NAME};" > /dev/null 2>&1 || true
+        sudo -u postgres psql -c "DROP USER IF EXISTS ${DB_USER};" > /dev/null 2>&1 || true
     fi
 
     # Remove cloned repository if we created it in this run
@@ -184,21 +184,8 @@ echo -e "${CYAN}${BOLD}Please configure the installation settings:${NC}"
 echo ""
 
 # === Installation Directory ===
-echo -e "${YELLOW}Installation Directory${NC}"
-echo -e "  Default: ${GREEN}$DEFAULT_INSTALL_DIR${NC}"
-echo -n "  Enter installation directory (press Enter for default): "
-read -r USER_INSTALL_DIR
-
-if [ -z "$USER_INSTALL_DIR" ]; then
-    INSTALL_DIR="$DEFAULT_INSTALL_DIR"
-else
-    if validate_directory "$USER_INSTALL_DIR"; then
-        INSTALL_DIR="$USER_INSTALL_DIR"
-    else
-        log_warning "Invalid path. Using default: $DEFAULT_INSTALL_DIR"
-        INSTALL_DIR="$DEFAULT_INSTALL_DIR"
-    fi
-fi
+# Use default installation directory without asking
+INSTALL_DIR="$DEFAULT_INSTALL_DIR"
 
 # Check if directory already exists
 if [ -d "$INSTALL_DIR" ]; then
@@ -221,35 +208,25 @@ echo ""
 echo -e "${YELLOW}Backend Port (Next.js API)${NC}"
 echo -e "  Default: ${GREEN}$DEFAULT_BACKEND_PORT${NC}"
 
+BACKEND_PORT="$DEFAULT_BACKEND_PORT"
+
 # Check if default port is in use
 if check_port "$DEFAULT_BACKEND_PORT"; then
     log_warning "Port $DEFAULT_BACKEND_PORT is currently in use!"
-fi
-
-echo -n "  Enter backend port (press Enter for default): "
-read -r USER_BACKEND_PORT
-
-if [ -z "$USER_BACKEND_PORT" ]; then
-    BACKEND_PORT="$DEFAULT_BACKEND_PORT"
-else
-    if validate_port "$USER_BACKEND_PORT"; then
+    echo -n "  Enter alternative backend port: "
+    read -r USER_BACKEND_PORT
+    
+    if [ -z "$USER_BACKEND_PORT" ]; then
+        log_error "Port is occupied and no alternative provided. Exiting."
+        exit 1
+    elif validate_port "$USER_BACKEND_PORT"; then
         BACKEND_PORT="$USER_BACKEND_PORT"
     else
-        log_warning "Invalid port number. Using default: $DEFAULT_BACKEND_PORT"
-        BACKEND_PORT="$DEFAULT_BACKEND_PORT"
-    fi
-fi
-
-# Warn if port is in use
-if check_port "$BACKEND_PORT"; then
-    log_warning "Port $BACKEND_PORT is currently in use. The service may fail to start."
-    echo -n "  Continue anyway? (y/N): "
-    read -r CONTINUE_BACKEND
-    if [[ ! "$CONTINUE_BACKEND" =~ ^[Yy]$ ]]; then
-        log_error "Installation cancelled. Please choose a different port."
+        log_error "Invalid port number. Exiting."
         exit 1
     fi
 fi
+
 log_success "Backend port: $BACKEND_PORT"
 
 echo ""
@@ -258,46 +235,29 @@ echo ""
 echo -e "${YELLOW}Frontend Port (Apache Web Server)${NC}"
 echo -e "  Default: ${GREEN}$DEFAULT_FRONTEND_PORT${NC}"
 
+FRONTEND_PORT="$DEFAULT_FRONTEND_PORT"
+
 # Check if default port is in use
 if check_port "$DEFAULT_FRONTEND_PORT"; then
     log_warning "Port $DEFAULT_FRONTEND_PORT is currently in use!"
     # Check what's using it
     if command -v ss &> /dev/null; then
-        USING_80=$(ss -tlnp 2>/dev/null | grep ":80 " | head -1 || true)
-        if [ -n "$USING_80" ]; then
-            log_info "Currently using port 80: $USING_80"
+        USING_PORT=$(ss -tlnp 2>/dev/null | grep ":$DEFAULT_FRONTEND_PORT " | head -1 || true)
+        if [ -n "$USING_PORT" ]; then
+            log_info "Currently using port $DEFAULT_FRONTEND_PORT: $USING_PORT"
         fi
     fi
-fi
-
-echo -n "  Enter frontend port (press Enter for default): "
-read -r USER_FRONTEND_PORT
-
-if [ -z "$USER_FRONTEND_PORT" ]; then
-    FRONTEND_PORT="$DEFAULT_FRONTEND_PORT"
-else
-    if validate_port "$USER_FRONTEND_PORT"; then
-        FRONTEND_PORT="$USER_FRONTEND_PORT"
-    else
-        log_warning "Invalid port number. Using default: $DEFAULT_FRONTEND_PORT"
-        FRONTEND_PORT="$DEFAULT_FRONTEND_PORT"
-    fi
-fi
-
-# Warn if port is in use
-if check_port "$FRONTEND_PORT"; then
-    log_warning "Port $FRONTEND_PORT is currently in use."
+    
     echo -e "  ${YELLOW}Options:${NC}"
-    echo -e "    1) Stop the service using port $FRONTEND_PORT"
+    echo -e "    1) Stop the service using port $DEFAULT_FRONTEND_PORT"
     echo -e "    2) Choose a different port"
-    echo -e "    3) Continue anyway (may cause conflicts)"
-    echo -e "    4) Cancel installation"
-    echo -n "  Choose option (1-4): "
+    echo -e "    3) Cancel installation"
+    echo -n "  Choose option (1-3): "
     read -r PORT_OPTION
     
     case "$PORT_OPTION" in
         1)
-            log_step "Attempting to stop service using port $FRONTEND_PORT..."
+            log_step "Attempting to stop service using port $DEFAULT_FRONTEND_PORT..."
             # Try to identify and stop the service
             if systemctl is-active --quiet apache2; then
                 $SUDO_CMD systemctl stop apache2
@@ -319,15 +279,13 @@ if check_port "$FRONTEND_PORT"; then
                 exit 1
             fi
             ;;
-        3)
-            log_warning "Continuing with port $FRONTEND_PORT despite conflict..."
-            ;;
         *)
             log_error "Installation cancelled."
             exit 1
             ;;
     esac
 fi
+
 log_success "Frontend port: $FRONTEND_PORT"
 
 echo ""
@@ -337,13 +295,6 @@ echo -e "  Installation directory: ${CYAN}$INSTALL_DIR${NC}"
 echo -e "  Backend port:          ${CYAN}$BACKEND_PORT${NC}"
 echo -e "  Frontend port:         ${CYAN}$FRONTEND_PORT${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo ""
-echo -n "Proceed with installation? (Y/n): "
-read -r PROCEED
-if [[ "$PROCEED" =~ ^[Nn]$ ]]; then
-    log_error "Installation cancelled by user."
-    exit 0
-fi
 echo ""
 
 ################################################################################
@@ -479,16 +430,9 @@ if [ -z "$SERVER_IP" ]; then
 fi
 
 log_success "Server IP detected: $SERVER_IP"
-echo -e "${YELLOW}Is this IP correct? (y/n)${NC}"
-read -r confirm
-if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
-    echo -e "${YELLOW}Please enter the correct server IP address:${NC}"
-    read -r SERVER_IP
-    log_success "Using IP: $SERVER_IP"
-fi
 
 ################################################################################
-# Install PostgreSQL (Native - No Docker)
+# Install PostgreSQL
 ################################################################################
 log_header "Installing PostgreSQL (Native)"
 
@@ -511,27 +455,27 @@ log_step "Configuring database..."
 DB_CONFIGURED=true
 
 # Check if user already exists
-if su - postgres -c "psql -tAc \"SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'\"" 2>/dev/null | grep -q 1; then
+if sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" 2>/dev/null | grep -q 1; then
     log_info "Database user ${DB_USER} already exists"
 else
-    su - postgres -c "psql -c \"CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';\"" > /dev/null 2>&1
+    sudo -u postgres psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';" > /dev/null 2>&1
     log_success "Database user created"
 fi
 
 # Check if database already exists
-if su - postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'\"" 2>/dev/null | grep -q 1; then
+if sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" 2>/dev/null | grep -q 1; then
     log_info "Database ${DB_NAME} already exists"
 else
-    su - postgres -c "psql -c \"CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};\"" > /dev/null 2>&1
+    sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};" > /dev/null 2>&1
     log_success "Database created"
 fi
 
 # Grant privileges
-su - postgres -c "psql -c \"GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};\"" > /dev/null 2>&1
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};" > /dev/null 2>&1
 log_success "Database configured: ${DB_NAME}"
 
 ################################################################################
-# Install Apache (Native - No Docker)
+# Install Apache
 ################################################################################
 log_header "Installing Apache (Native)"
 
@@ -555,6 +499,8 @@ $SUDO_CMD systemctl enable apache2 > /dev/null 2>&1
 log_success "Apache service started"
 
 ################################################################################
+log_header "Installing Node.js"
+
 # Install Node.js 20.x
 log_step "Checking Node.js version..."
 NODE_INSTALLED=false
@@ -673,7 +619,9 @@ log_header "Building Backend Application"
 cd "$BACKEND_DIR"
 
 log_step "Installing dependencies ..."
-if ! pnpm install --frozen-lockfile 2>&1 | grep -v "Progress\|Resolving\|Downloading" | tail -10; then
+# Disable interactive prompts for corepack
+export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+if ! pnpm install --frozen-lockfile 2>&1; then
     log_error "Dependency installation failed"
     cleanup
     exit 1
@@ -681,14 +629,23 @@ fi
 log_success "Dependencies installed"
 
 log_step "Generating Prisma Client..."
-pnpm prisma generate > /dev/null 2>&1
+if ! pnpm prisma generate 2>&1; then
+    log_error "Prisma generation failed"
+    cleanup
+    exit 1
+fi
 log_success "Prisma Client generated"
 
 log_step "Running database migrations..."
-pnpm prisma migrate deploy > /dev/null 2>&1
+echo -e "${BLUE}Applying migrations...${NC}\n"
+if ! pnpm prisma migrate deploy 2>&1; then
+    log_error "Database migrations failed"
+    cleanup
+    exit 1
+fi
 log_success "Database migrations completed"
 
-log_step "Building Next.js application (standalone mode)..."
+log_step "Building Next.js application..."
 # Set environment variables for build
 export FRONTEND_URL="http://${SERVER_IP}:${FRONTEND_PORT}"
 export SERVER_IP="${SERVER_IP}"
@@ -715,7 +672,6 @@ log_success "Backend built successfully"
 log_header "Configuring Frontend"
 
 cd "$FRONTEND_DIR"
-
 
 ################################################################################
 # Configure Apache Virtual Host
@@ -858,7 +814,7 @@ echo -e "   Frontend: ${GREEN}http://${SERVER_IP}:${FRONTEND_PORT}${NC}"
 echo -e "   Backend:  ${GREEN}http://${SERVER_IP}:${BACKEND_PORT}${NC}\n"
 
 echo -e "${CYAN}🗄️  Database:${NC}"
-echo -e "   Type:     PostgreSQL (Native)"
+echo -e "   Type:     PostgreSQL"
 echo -e "   Port:     5432"
 echo -e "   Database: ${DB_NAME}"
 echo -e "   User:     ${DB_USER}\n"
