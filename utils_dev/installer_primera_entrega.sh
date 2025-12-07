@@ -7,12 +7,6 @@
 # - PostgreSQL database
 # - Next.js Backend API
 # - Apache Frontend
-#
-# Usage:
-#   ./installer.sh                    # Full installation
-#   ./installer.sh --update [tag]     # Update existing installation
-#   ./installer.sh --config-backend   # Configure backend to use new frontend location
-#   ./installer.sh --config-frontend  # Configure frontend to use new backend location
 ################################################################################
 
 set -Eeuo pipefail  # Exit on error, unset vars, and fail pipelines
@@ -136,11 +130,6 @@ DB_USER="clutchpay_user"
 DB_PASSWORD="clutchpay_pass"
 
 ################################################################################
-# Main Installation Function
-################################################################################
-install_clutchpay() {
-
-################################################################################
 # Banner
 ################################################################################
 clear
@@ -176,15 +165,6 @@ check_port() {
 validate_port() {
     local port=$1
     if [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ]; then
-        return 0
-    fi
-    return 1
-}
-
-# Function to validate IP address
-validate_ip() {
-    local ip=$1
-    if [[ "$ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
         return 0
     fi
     return 1
@@ -233,50 +213,18 @@ BACKEND_PORT="$DEFAULT_BACKEND_PORT"
 # Check if default port is in use
 if check_port "$DEFAULT_BACKEND_PORT"; then
     log_warning "Port $DEFAULT_BACKEND_PORT is currently in use!"
-    # Check what's using it
-    if command -v ss &> /dev/null; then
-        USING_PORT=$(ss -tlnp 2>/dev/null | grep ":$DEFAULT_BACKEND_PORT " | head -1 || true)
-        if [ -n "$USING_PORT" ]; then
-            log_info "Currently using port $DEFAULT_BACKEND_PORT: $USING_PORT"
-        fi
+    echo -n "  Enter alternative backend port: "
+    read -r USER_BACKEND_PORT
+    
+    if [ -z "$USER_BACKEND_PORT" ]; then
+        log_error "Port is occupied and no alternative provided. Exiting."
+        exit 1
+    elif validate_port "$USER_BACKEND_PORT"; then
+        BACKEND_PORT="$USER_BACKEND_PORT"
+    else
+        log_error "Invalid port number. Exiting."
+        exit 1
     fi
-    
-    echo -e "  ${YELLOW}Options:${NC}"
-    echo -e "    1) Stop the service using port $DEFAULT_BACKEND_PORT"
-    echo -e "    2) Choose a different port"
-    echo -e "    3) Cancel installation"
-    echo -n "  Choose option (1-3): "
-    read -r PORT_OPTION
-    
-    case "$PORT_OPTION" in
-        1)
-            log_step "Attempting to stop service using port $DEFAULT_BACKEND_PORT..."
-            # Try to identify and stop the service
-            if systemctl is-active --quiet clutchpay-backend; then
-                $SUDO_CMD systemctl stop clutchpay-backend
-                log_success "Stopped existing clutchpay-backend service"
-            elif systemctl is-active --quiet node; then
-                $SUDO_CMD systemctl stop node
-                log_success "Stopped node service"
-            else
-                log_warning "Could not identify the service. You may need to stop it manually."
-            fi
-            ;;
-        2)
-            echo -n "  Enter a new port: "
-            read -r NEW_PORT
-            if validate_port "$NEW_PORT"; then
-                BACKEND_PORT="$NEW_PORT"
-            else
-                log_error "Invalid port. Installation cancelled."
-                exit 1
-            fi
-            ;;
-        *)
-            log_error "Installation cancelled."
-            exit 1
-            ;;
-    esac
 fi
 
 log_success "Backend port: $BACKEND_PORT"
@@ -591,7 +539,7 @@ fi
 log_header "Downloading ClutchPay"
 
 REPO_URL="https://github.com/GCousido/ClutchPay.git"
-REPO_TAG="fix-installer"
+REPO_TAG="primera-entrega"
 
 if [ -d "$INSTALL_DIR" ]; then
     log_warning "Installation directory exists. Backing up..."
@@ -740,14 +688,11 @@ $SUDO_CMD cp -r "$FRONTEND_DIR"/* "$APACHE_DOC_ROOT/"
 $SUDO_CMD chown -R www-data:www-data "$APACHE_DOC_ROOT"
 log_success "Frontend files copied"
 
-# Update config.js with backend IP and port
-log_step "Configuring frontend backend connection..."
+# Update config.js with correct backend port (if exists)
 if [ -f "$APACHE_DOC_ROOT/JS/config.js" ]; then
-    $SUDO_CMD sed -i "s|const BACKEND_IP = '.*';|const BACKEND_IP = '${SERVER_IP}';|" "$APACHE_DOC_ROOT/JS/config.js"
-    $SUDO_CMD sed -i "s|const BACKEND_PORT = [0-9]*;|const BACKEND_PORT = ${BACKEND_PORT};|" "$APACHE_DOC_ROOT/JS/config.js"
-    log_success "Frontend configured to use backend at ${SERVER_IP}:${BACKEND_PORT}"
-else
-    log_warning "JS/config.js not found. Skipping frontend configuration."
+    log_step "Configuring frontend to use backend port ${BACKEND_PORT}..."
+    $SUDO_CMD sed -i "s|:3000|:${BACKEND_PORT}|g" "$APACHE_DOC_ROOT/JS/config.js"
+    log_success "Frontend configuration updated"
 fi
 
 # Create Apache virtual host configuration
@@ -891,345 +836,3 @@ echo -e "     systemctl restart postgresql\n"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN}  Thank you for installing ClutchPay!${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
-
-}
-
-################################################################################
-# Update Function
-################################################################################
-update_clutchpay() {
-    clear
-echo -e "${CYAN}${BOLD}"
-cat << "EOF"
-   _____ _       _       _     ____
-  / ____| |     | |     | |   |  _ \
- | |    | |_   _| |_ ___| |__ | |_) | __ _ _   _
- | |    | | | | | __/ __| '_ \|  _ / / _` | | | |
- | |____| | |_| | || (__| | | | |   | (_| | |_| |
-  \_____|_|\__,_|\__\___|_| |_| |   \__,_|\__,  |
-                                            __/ |
-            Update Script - Debian 11       |___/
-EOF
-echo -e "${NC}"
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
-    
-    log_header "Configuration"
-    
-    # Ask for installation directory
-    echo -e "${YELLOW}Installation directory (default: ${DEFAULT_INSTALL_DIR}):${NC}"
-    read -r USER_INSTALL_DIR
-    
-    INSTALL_DIR="${USER_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
-    
-    # Check if installation exists
-    if [ ! -d "$INSTALL_DIR" ]; then
-        log_error "Installation not found at $INSTALL_DIR"
-        log_info "Please run installation first: ./installer.sh"
-        exit 1
-    fi
-    
-    BACKEND_DIR="$INSTALL_DIR/$BACKEND_SUBDIR"
-    FRONTEND_DIR="$INSTALL_DIR/frontend"
-    
-    # Validate directories exist
-    if [ ! -d "$BACKEND_DIR" ]; then
-        log_error "Backend directory not found at $BACKEND_DIR"
-        exit 1
-    fi
-    
-    if [ ! -d "$FRONTEND_DIR" ]; then
-        log_error "Frontend directory not found at $FRONTEND_DIR"
-        exit 1
-    fi
-    
-    log_success "Installation found at: $INSTALL_DIR"
-    
-    # Use tag from parameter or prompt for it
-    if [ -n "${UPDATE_TAG:-}" ]; then
-        log_info "Using tag from parameter: $UPDATE_TAG"
-    else
-        # Fetch tags first to show available options
-        log_step "Fetching available tags..."
-        cd "$INSTALL_DIR"
-        git fetch --tags origin > /dev/null 2>&1 || true
-        
-        echo -e "\n${CYAN}Available tags:${NC}"
-        git tag -l --sort=-version:refname | head -20 | sed 's/^/  - /'
-        
-        echo -e "\n${YELLOW}Enter the tag to update to:${NC}"
-        read -r UPDATE_TAG
-        
-        if [ -z "$UPDATE_TAG" ]; then
-            log_error "Tag cannot be empty"
-            exit 1
-        fi
-    fi
-    
-    log_header "Updating ClutchPay to $UPDATE_TAG"
-    
-    log_step "Stopping backend service..."
-    $SUDO_CMD systemctl stop clutchpay-backend.service
-    
-    log_step "Ensuring proper ownership..."
-    # Ensure the current user owns the installation directory
-    if [ "$IS_ROOT" = false ]; then
-        $SUDO_CMD chown -R $USER:$USER "$INSTALL_DIR"
-    fi
-    
-    log_step "Fetching updates from tag: $UPDATE_TAG..."
-    cd "$INSTALL_DIR"
-    
-    # Fetch all tags from origin
-    if ! git fetch --tags origin 2>&1; then
-        log_error "Failed to fetch tags from repository"
-        log_info "Check your network connection and repository access"
-        $SUDO_CMD systemctl start clutchpay-backend.service
-        exit 1
-    fi
-    
-    # Verify tag exists
-    if ! git rev-parse "refs/tags/$UPDATE_TAG" > /dev/null 2>&1; then
-        log_error "Tag '$UPDATE_TAG' not found in repository"
-        log_info "Available tags:"
-        git tag -l | sed 's/^/  - /'
-        $SUDO_CMD systemctl start clutchpay-backend.service
-        exit 1
-    fi
-    
-    # Checkout the tag
-    if ! git checkout "$UPDATE_TAG" 2>&1; then
-        log_error "Failed to checkout tag $UPDATE_TAG"
-        $SUDO_CMD systemctl start clutchpay-backend.service
-        exit 1
-    fi
-    
-    log_success "Code updated to $UPDATE_TAG"
-    
-    log_header "Updating Backend"
-    
-    log_step "Installing dependencies..."
-    cd "$BACKEND_DIR"
-    export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-    pnpm install --frozen-lockfile > /dev/null 2>&1
-    log_success "Dependencies installed"
-    
-    log_step "Generating Prisma Client..."
-    pnpm prisma generate > /dev/null 2>&1
-    log_success "Prisma Client generated"
-    
-    log_step "Running database migrations..."
-    pnpm prisma migrate deploy
-    log_success "Database migrations completed"
-    
-    log_step "Rebuilding backend application..."
-    # Load environment variables
-    if [ -f "$BACKEND_DIR/.env" ]; then
-        set -a
-        source "$BACKEND_DIR/.env"
-        set +a
-    fi
-    
-    pnpm build > /dev/null 2>&1
-    log_success "Backend rebuilt"
-    
-    log_header "Updating Frontend"
-    
-    # Get Apache document root from config or use default
-    APACHE_DOC_ROOT="/var/www/clutchpay"
-    
-    log_step "Updating frontend files..."
-    $SUDO_CMD cp -r "$FRONTEND_DIR"/* "$APACHE_DOC_ROOT/"
-    $SUDO_CMD chown -R www-data:www-data "$APACHE_DOC_ROOT"
-    log_success "Frontend files updated"
-    
-    log_step "Restarting services..."
-    $SUDO_CMD systemctl start clutchpay-backend.service
-    $SUDO_CMD systemctl reload apache2
-    log_success "Services restarted"
-    
-    log_header "Update Complete! 🎉"
-    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${GREEN}${BOLD}  ClutchPay has been successfully updated!${NC}"
-    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
-    echo -e "${CYAN}Updated to version: ${GREEN}$UPDATE_TAG${NC}\n"
-}
-
-################################################################################
-# Configure Backend Function
-################################################################################
-config_backend() {
-    log_header "Configure Backend - Frontend Location"
-    
-    # Ask for installation directory
-    echo -e "${YELLOW}Backend installation directory (default: ${DEFAULT_INSTALL_DIR}):${NC}"
-    read -r USER_INSTALL_DIR
-    
-    INSTALL_DIR="${USER_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
-    
-    # Check if user provided the root dir or the backend dir
-    if [ -f "$INSTALL_DIR/package.json" ] && [ -f "$INSTALL_DIR/.env" ]; then
-        BACKEND_DIR="$INSTALL_DIR"
-    else
-        BACKEND_DIR="$INSTALL_DIR/$BACKEND_SUBDIR"
-    fi
-    
-    if [ ! -d "$BACKEND_DIR" ]; then
-        log_error "Backend directory not found at $BACKEND_DIR"
-        exit 1
-    fi
-    
-    if [ ! -f "$BACKEND_DIR/.env" ]; then
-        log_error "Backend .env file not found at $BACKEND_DIR/.env"
-        exit 1
-    fi
-    
-    log_success "Backend found at: $BACKEND_DIR"
-    
-    # Get new frontend location
-    while true; do
-        echo -e "\n${YELLOW}Enter the new frontend IP address:${NC}"
-        read -r NEW_FRONTEND_IP
-        
-        if [ -z "$NEW_FRONTEND_IP" ]; then
-            log_error "IP address cannot be empty"
-        elif validate_ip "$NEW_FRONTEND_IP"; then
-            break
-        else
-            log_error "Invalid IP address format"
-        fi
-    done
-    
-    echo -e "${YELLOW}Enter the new frontend port (default: 80):${NC}"
-    read -r NEW_FRONTEND_PORT
-    NEW_FRONTEND_PORT="${NEW_FRONTEND_PORT:-80}"
-    
-    if ! validate_port "$NEW_FRONTEND_PORT"; then
-        log_error "Invalid port number"
-        exit 1
-    fi
-    
-    log_step "Updating backend configuration..."
-    
-    # Update only SERVER_IP (frontend server IP for CORS) and FRONTEND_PORT
-    sed -i "s|^SERVER_IP=.*|SERVER_IP=${NEW_FRONTEND_IP}|" "$BACKEND_DIR/.env"
-    sed -i "s|^FRONTEND_PORT=.*|FRONTEND_PORT=${NEW_FRONTEND_PORT}|" "$BACKEND_DIR/.env"
-    
-    log_success "Updated SERVER_IP to ${NEW_FRONTEND_IP}"
-    log_success "Updated FRONTEND_PORT to ${NEW_FRONTEND_PORT}"
-    
-    # Rebuild backend with new configuration
-    log_step "Rebuilding backend with new configuration..."
-    cd "$BACKEND_DIR"
-    
-    # Load environment variables
-    set -a
-    source "$BACKEND_DIR/.env"
-    set +a
-    
-    export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-    pnpm build > /dev/null 2>&1
-    log_success "Backend rebuilt"
-    
-    # Restart backend service
-    log_step "Restarting backend service..."
-    $SUDO_CMD systemctl restart clutchpay-backend.service
-    log_success "Backend service restarted"
-    
-    log_header "Configuration Complete! 🎉"
-    echo -e "${GREEN}Backend now configured to accept requests from:${NC}"
-    echo -e "  Frontend URL: ${CYAN}http://${NEW_FRONTEND_IP}:${NEW_FRONTEND_PORT}${NC}\n"
-}
-
-################################################################################
-# Configure Frontend Function
-################################################################################
-config_frontend() {
-    log_header "Configure Frontend - Backend Location"
-    
-    # Ask for frontend directory
-    APACHE_DOC_ROOT="/var/www/clutchpay"
-    echo -e "${YELLOW}Frontend directory (default: ${APACHE_DOC_ROOT}):${NC}"
-    read -r USER_FRONTEND_DIR
-    
-    FRONTEND_DIR="${USER_FRONTEND_DIR:-$APACHE_DOC_ROOT}"
-    
-    if [ ! -d "$FRONTEND_DIR" ]; then
-        log_error "Frontend directory not found at $FRONTEND_DIR"
-        exit 1
-    fi
-    
-    log_success "Frontend found at: $FRONTEND_DIR"
-    
-    # Get new backend location
-    while true; do
-        echo -e "\n${YELLOW}Enter the new backend API IP address:${NC}"
-        read -r NEW_BACKEND_IP
-        
-        if [ -z "$NEW_BACKEND_IP" ]; then
-            log_error "IP address cannot be empty"
-        elif validate_ip "$NEW_BACKEND_IP"; then
-            break
-        else
-            log_error "Invalid IP address format"
-        fi
-    done
-    
-    echo -e "${YELLOW}Enter the new backend API port (default: 3000):${NC}"
-    read -r NEW_BACKEND_PORT
-    NEW_BACKEND_PORT="${NEW_BACKEND_PORT:-3000}"
-    
-    if ! validate_port "$NEW_BACKEND_PORT"; then
-        log_error "Invalid port number"
-        exit 1
-    fi
-    
-    log_step "Updating frontend configuration..."
-    
-    # Update config.js with new backend IP and port
-    if [ -f "$FRONTEND_DIR/JS/config.js" ]; then
-        sed -i "s|const BACKEND_IP = '.*';|const BACKEND_IP = '${NEW_BACKEND_IP}';|" "$FRONTEND_DIR/JS/config.js"
-        sed -i "s|const BACKEND_PORT = [0-9]*;|const BACKEND_PORT = ${NEW_BACKEND_PORT};|" "$FRONTEND_DIR/JS/config.js"
-        log_success "Updated JS/config.js with backend at ${NEW_BACKEND_IP}:${NEW_BACKEND_PORT}"
-    else
-        log_warning "JS/config.js not found. Skipping config update."
-    fi
-    
-    log_success "Updated frontend to use backend at http://${NEW_BACKEND_IP}:${NEW_BACKEND_PORT}"
-    
-    log_header "Configuration Complete! 🎉"
-    echo -e "${GREEN}Frontend now configured to connect to:${NC}"
-    echo -e "  Backend API: ${CYAN}http://${NEW_BACKEND_IP}:${NEW_BACKEND_PORT}${NC}\n"
-}
-
-################################################################################
-# Main Script Entry Point
-################################################################################
-
-# Parse command line arguments
-case "${1:-}" in
-    --update)
-        # Check if a tag was provided as second argument
-        UPDATE_TAG="${2:-}"
-        update_clutchpay
-        ;;
-    --config-backend)
-        config_backend
-        ;;
-    --config-frontend)
-        config_frontend
-        ;;
-    --help|-h)
-        echo -e "${CYAN}ClutchPay Installer${NC}"
-        echo ""
-        echo "Usage:"
-        echo "  ./installer.sh                     Full installation"
-        echo "  ./installer.sh --update [tag]      Update to a specific version"
-        echo "  ./installer.sh --config-backend    Configure backend (new frontend location)"
-        echo "  ./installer.sh --config-frontend   Configure frontend (new backend location)"
-        echo "  ./installer.sh --help              Show this help message"
-        echo ""
-        ;;
-    *)
-        install_clutchpay
-        ;;
-esac

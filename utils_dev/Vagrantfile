@@ -1,0 +1,118 @@
+# -*- mode: ruby -*-
+# VagrantFile for testing ClutchPay installer in Debian 11
+# 
+# Requirements: Install Vagrant + VirtualBox
+#   - https://www.vagrantup.com/downloads
+#   - https://www.virtualbox.org/wiki/Downloads
+#
+# Use:
+#   cd utils_dev
+#   vagrant up          # Create and start the VM
+#   vagrant ssh         # Connect to VM
+#   bash /installer.sh  # Execute installer
+#   vagrant destroy -f  # Remove the VM to start over
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "debian/bullseye64"
+  config.vm.hostname = "clutchpay-test"
+  
+  # Bridge network - VM gets IP from the local network DHCP server
+  # This allows direct access from any device on your network
+  # Auto-detects available adapters on Windows
+  config.vm.network "public_network"
+  
+  # Resources for the VM
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = "4096"
+    vb.cpus = 2
+    vb.name = "ClutchPay-Test"
+  end
+  
+  # Copy installer script and setup network helpers
+  config.vm.provision "file", source: "../installer.sh", destination: "/tmp/installer.sh"
+  config.vm.provision "shell", inline: <<-SHELL
+
+    # Configure reliable DNS servers (Google DNS)
+    echo "nameserver 8.8.8.8" > /etc/resolv.conf
+    echo "nameserver 8.8.4.4" >> /etc/resolv.conf
+
+    echo "Configuring eth1 interface..."
+    
+    # Ensure dhclient is installed
+    apt-get update -qq
+    apt-get install -y isc-dhcp-client
+    
+    # Configure /etc/network/interfaces
+    if ! grep -q "iface eth1 inet dhcp" /etc/network/interfaces; then
+        echo "" >> /etc/network/interfaces
+        echo "auto eth1" >> /etc/network/interfaces
+        echo "allow-hotplug eth1" >> /etc/network/interfaces
+        echo "iface eth1 inet dhcp" >> /etc/network/interfaces
+    fi
+    
+    # Restart the interface
+    ifdown eth1 2>/dev/null || true
+    ifup eth1 || true
+    
+    # If ifup fails, try dhclient directly
+    if ! ip -4 addr show eth1 | grep -q "inet"; then
+        echo "Attempting to obtain IP via dhclient..."
+        pkill dhclient || true
+        dhclient -v eth1
+    fi
+    
+    cp /tmp/installer.sh /installer.sh && chmod +x /installer.sh
+    
+    # TEMPORARY PATCH ON VM:
+    # The original installer picks the first IP (NAT), we patch it HERE (in the VM copy)
+    # to prefer the bridge IP (eth1). The original file on Windows is NOT touched.
+    sed -i '/SERVER_IP=\$(hostname -I | awk/a SERVER_IP=$(ip -4 addr show eth1 2>/dev/null | grep -oP "(?<=inet\\\\s)\\\\d+(\\\\.\\\\d+){3}" || echo $SERVER_IP)' /installer.sh
+    
+    echo "nameserver 8.8.8.8" > /etc/resolv.conf
+    echo "nameserver 8.8.4.4" >> /etc/resolv.conf
+    
+    # Create helper script to display network info
+    cat > /check-network.sh << 'EOF'
+#!/bin/bash
+echo "=== Network Information ==="
+echo ""
+echo "Assigned IPs:"
+ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}(/\d+)?' | grep -v '127.0.0.1'
+echo ""
+echo "Bridge interface IP (eth1):"
+ip -4 addr show eth1 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' || echo "(not configured)"
+echo ""
+echo "IP detected by hostname -I:"
+hostname -I | awk '{print $1}'
+echo ""
+echo "Default gateway:"
+ip route | grep default
+echo ""
+echo "DNS servers:"
+cat /etc/resolv.conf | grep nameserver
+echo ""
+echo "Testing connectivity..."
+echo -n "  - Ping to Google DNS (8.8.8.8): "
+if ping -c 1 -W 2 8.8.8.8 > /dev/null 2>&1; then
+  echo "✓ OK"
+else
+  echo "✗ FAIL"
+fi
+echo -n "  - DNS resolution (google.com): "
+if ping -c 1 -W 2 google.com > /dev/null 2>&1; then
+  echo "✓ OK"
+else
+  echo "✗ FAIL"
+fi
+EOF
+    chmod +x /check-network.sh
+    
+    echo ""
+    echo "=== Debian 11 VM ready ==="
+    echo ""
+    echo "Useful commands:"
+    echo "  bash /check-network.sh                         # Check network status"
+    echo "  bash /installer.sh                             # Install ClutchPay"
+    echo ""
+  SHELL
+end
