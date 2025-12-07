@@ -245,13 +245,18 @@ class Auth {
             });
             const { csrfToken } = await csrfRes.json();
             
+            // Get frontend URL from config
+            const frontendUrl = (window.CLUTCHPAY_CONFIG && window.CLUTCHPAY_CONFIG.FRONTEND_URL) 
+                ? window.CLUTCHPAY_CONFIG.FRONTEND_URL 
+                : window.location.origin;
+            
             // Perform logout with CSRF token
             const response = await fetch(`${this.API_BASE_URL}/api/auth/signout`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: new URLSearchParams({ 
                     csrfToken,
-                    callbackUrl: 'http://localhost:80/index.html' 
+                    callbackUrl: `${frontendUrl}/index.html` 
                 }),
                 credentials: 'include',
             });
