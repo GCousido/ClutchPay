@@ -5,14 +5,13 @@
  * No manual configuration needed.
  */
 
-// Detect backend URL based on current hostname
+// Backend configuration - Set by installer
+const BACKEND_IP = 'localhost';
+const BACKEND_PORT = 3000;
+
+// Detect backend URL
 function getApiBaseUrl() {
-    const hostname = window.location.hostname;
-    // Backend runs on port 3000
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        return 'http://localhost:3000';
-    }
-    return `http://${hostname}:3000`;
+    return `http://${BACKEND_IP}:${BACKEND_PORT}`;
 }
 
 // Global configuration

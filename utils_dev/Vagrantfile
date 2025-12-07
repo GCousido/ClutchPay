@@ -31,6 +31,7 @@ Vagrant.configure("2") do |config|
   # Copy installer script and setup network helpers
   config.vm.provision "file", source: "../installer.sh", destination: "/tmp/installer.sh"
   config.vm.provision "shell", inline: <<-SHELL
+
     # Configure reliable DNS servers (Google DNS)
     echo "nameserver 8.8.8.8" > /etc/resolv.conf
     echo "nameserver 8.8.4.4" >> /etc/resolv.conf
@@ -69,14 +70,6 @@ Vagrant.configure("2") do |config|
     
     echo "nameserver 8.8.8.8" > /etc/resolv.conf
     echo "nameserver 8.8.4.4" >> /etc/resolv.conf
-
-    # Create script to get the correct bridge IP
-    cat > /get-bridge-ip.sh << 'EOF'
-#!/bin/bash
-# Get the bridge adapter IP (eth1) if it exists
-ip -4 addr show eth1 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1
-EOF
-    chmod +x /get-bridge-ip.sh
     
     # Create helper script to display network info
     cat > /check-network.sh << 'EOF'
@@ -119,7 +112,7 @@ EOF
     echo ""
     echo "Useful commands:"
     echo "  bash /check-network.sh                         # Check network status"
-    echo "  SERVER_IP=192.168.x.x sudo bash /installer.sh  # Run installer with specific IP"
+    echo "  bash /installer.sh                             # Install ClutchPay"
     echo ""
   SHELL
 end
