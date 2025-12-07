@@ -9,16 +9,24 @@
 # - Apache Frontend
 #
 # Usage:
-#   ./installer.sh                    # Full installation
-#   ./installer.sh --update [tag]     # Update existing installation
-#   ./installer.sh --config-backend   # Configure backend to use new frontend location
-#   ./installer.sh --config-frontend  # Configure frontend to use new backend location
+#   ./installer.sh                      # Full installation (backend + frontend)
+#   ./installer.sh -i                   # Interactive mode (prompts for all configurations)
+#   ./installer.sh --backend-only       # Install only backend + PostgreSQL
+#   ./installer.sh --backend-only -i    # Interactive backend installation
+#   ./installer.sh --frontend-only      # Install only frontend (Apache)
+#   ./installer.sh --frontend-only -i   # Interactive frontend installation
+#   ./installer.sh --update [tag]       # Update existing installation
+#   ./installer.sh --config-backend     # Configure backend to use new frontend location
+#   ./installer.sh --config-frontend    # Configure frontend to use new backend location
 ################################################################################
 
 set -Eeuo pipefail  # Exit on error, unset vars, and fail pipelines
 
 # Get absolute path of this script
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+
+# Interactive mode flag
+INTERACTIVE_MODE=false
 
 # Check if running as root
 IS_ROOT=false
@@ -130,38 +138,18 @@ BACKEND_SUBDIR="back"
 DEFAULT_BACKEND_PORT=3000
 DEFAULT_FRONTEND_PORT=80
 
+# Repository Configuration
+REPO_URL="https://github.com/GCousido/ClutchPay.git"
+REPO_TAG="main"
+
 # Database credentials (from .env defaults)
 DB_NAME="clutchpay_db"
 DB_USER="clutchpay_user"
 DB_PASSWORD="clutchpay_pass"
 
 ################################################################################
-# Main Installation Function
+# Helper Functions (used by all installation modes)
 ################################################################################
-install_clutchpay() {
-
-################################################################################
-# Banner
-################################################################################
-clear
-echo -e "${CYAN}${BOLD}"
-cat << "EOF"
-   _____ _       _       _     ____
-  / ____| |     | |     | |   |  _ \
- | |    | |_   _| |_ ___| |__ | |_) | __ _ _   _
- | |    | | | | | __/ __| '_ \|  _ / / _` | | | |
- | |____| | |_| | || (__| | | | |   | (_| | |_| |
-  \_____|_|\__,_|\__\___|_| |_| |   \__,_|\__,  |
-                                            __/ |
-          Installation Script - Debian 11  |___/
-EOF
-echo -e "${NC}"
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
-
-################################################################################
-# Interactive Configuration
-################################################################################
-log_header "Configuration Options"
 
 # Function to check if port is in use
 check_port() {
@@ -199,155 +187,836 @@ validate_directory() {
     return 1
 }
 
-echo ""
-echo -e "${CYAN}${BOLD}Please configure the installation settings:${NC}"
-echo ""
+################################################################################
+# Common Setup Function - Shared by all installation modes
+################################################################################
+common_setup() {
+    local mode="${1:-full}"  # full, backend, frontend
+    
+    ################################################################################
+    # Check sudo availability
+    ################################################################################
+    log_header "Checking Privileges"
 
-# === Installation Directory ===
-# Use default installation directory without asking
-INSTALL_DIR="$DEFAULT_INSTALL_DIR"
-
-# Check if directory already exists
-if [ -d "$INSTALL_DIR" ]; then
-    log_warning "Directory $INSTALL_DIR already exists!"
-    echo -n "  Do you want to overwrite it? (y/N): "
-    read -r OVERWRITE_DIR
-    if [[ ! "$OVERWRITE_DIR" =~ ^[Yy]$ ]]; then
-        log_error "Installation cancelled. Please choose a different directory."
+    if [ "$EUID" -eq 0 ]; then
+        SUDO_CMD=""
+        log_success "Running as root"
+    elif command -v sudo &> /dev/null; then
+        if sudo -n true 2>/dev/null; then
+            SUDO_CMD="sudo"
+            log_success "sudo privileges already cached"
+        else
+            log_info "This installation requires administrative privileges."
+            echo -e "${YELLOW}Please enter your sudo password:${NC}"
+            if ! sudo -v; then
+                log_error "Failed to obtain sudo privileges"
+                exit 1
+            fi
+            SUDO_CMD="sudo"
+            log_success "sudo privileges obtained"
+        fi
+    else
+        log_error "sudo is not installed and you are not root"
+        log_info "Please install sudo with: ${CYAN}su -c 'apt-get update && apt-get install -y sudo'${NC}"
+        log_info "Then add your user to sudo group: ${CYAN}su -c 'usermod -aG sudo $USER'${NC}"
+        log_info "After that, log out and log back in, then run this script again."
         exit 1
     fi
-fi
 
-BACKEND_DIR="$INSTALL_DIR/$BACKEND_SUBDIR"
-FRONTEND_DIR="$INSTALL_DIR/frontend"
-log_success "Installation directory: $INSTALL_DIR"
+    ################################################################################
+    # Ensure basic system tools are available
+    ################################################################################
+    log_header "Verifying Essential Tools"
 
-echo ""
+    if ! command -v dpkg &> /dev/null; then
+        log_error "dpkg not found. This script requires a Debian-based system."
+        exit 1
+    fi
 
-# === Backend Port ===
-echo -e "${YELLOW}Backend Port (Next.js API)${NC}"
-echo -e "  Default: ${GREEN}$DEFAULT_BACKEND_PORT${NC}"
+    if ! command -v tee &> /dev/null; then
+        log_step "Installing coreutils (includes tee)..."
+        $SUDO_CMD apt-get update -qq
+        $SUDO_CMD apt-get install -y coreutils > /dev/null 2>&1
+        log_success "coreutils installed"
+    fi
 
-BACKEND_PORT="$DEFAULT_BACKEND_PORT"
+    if ! command -v sed &> /dev/null; then
+        log_step "Installing sed..."
+        $SUDO_CMD apt-get install -y sed > /dev/null 2>&1
+        log_success "sed installed"
+    fi
 
-# Check if default port is in use
-if check_port "$DEFAULT_BACKEND_PORT"; then
-    log_warning "Port $DEFAULT_BACKEND_PORT is currently in use!"
-    # Check what's using it
-    if command -v ss &> /dev/null; then
-        USING_PORT=$(ss -tlnp 2>/dev/null | grep ":$DEFAULT_BACKEND_PORT " | head -1 || true)
-        if [ -n "$USING_PORT" ]; then
-            log_info "Currently using port $DEFAULT_BACKEND_PORT: $USING_PORT"
+    if ! command -v grep &> /dev/null; then
+        log_step "Installing grep..."
+        $SUDO_CMD apt-get install -y grep > /dev/null 2>&1
+        log_success "grep installed"
+    fi
+
+    if ! command -v systemctl &> /dev/null; then
+        log_error "systemctl not found. This script requires systemd."
+        exit 1
+    fi
+
+    log_success "All essential system tools are available"
+
+    ################################################################################
+    # Check System
+    ################################################################################
+    log_header "Checking System Requirements"
+
+    if [ ! -f /etc/debian_version ]; then
+        log_error "This script requires Debian 11"
+        exit 1
+    fi
+
+    log_success "Running on Debian $(cat /etc/debian_version)"
+
+    ################################################################################
+    # Install Dependencies
+    ################################################################################
+    log_header "Installing System Dependencies"
+
+    $SUDO_CMD apt-get update -qq
+
+    if ! command -v curl &> /dev/null; then
+        log_step "Installing curl..."
+        $SUDO_CMD apt-get install -y curl > /dev/null 2>&1
+        log_success "curl installed"
+    else
+        log_success "curl already installed"
+    fi
+
+    if ! command -v git &> /dev/null; then
+        log_step "Installing Git..."
+        $SUDO_CMD apt-get install -y git > /dev/null 2>&1
+        log_success "Git installed"
+    else
+        log_success "Git already installed"
+    fi
+
+    ################################################################################
+    # Detect Server IP Address
+    ################################################################################
+    log_header "Detecting Server IP Address"
+
+    SERVER_IP=$(hostname -I | awk '{print $1}')
+
+    if [ -z "$SERVER_IP" ]; then
+        log_warning "Could not auto-detect IP address"
+        # Keep asking until valid IP is provided
+        while [ -z "$SERVER_IP" ] || ! validate_ip "$SERVER_IP"; do
+            echo -e "${YELLOW}Please enter the server IP address:${NC}"
+            read -r SERVER_IP
+            if [ -z "$SERVER_IP" ]; then
+                log_error "Server IP cannot be empty"
+            elif ! validate_ip "$SERVER_IP"; then
+                log_error "Invalid IP address format: $SERVER_IP"
+                SERVER_IP=""
+            fi
+        done
+    else
+        log_info "Auto-detected IP: $SERVER_IP"
+        
+        # In interactive mode, always confirm IP address
+        if [ "$INTERACTIVE_MODE" = true ]; then
+            CONFIRMED=false
+            while [ "$CONFIRMED" = false ]; do
+                echo -e "${YELLOW}Is this IP address correct? (Y/n):${NC}"
+                read -r IP_CONFIRM
+                if [[ "$IP_CONFIRM" =~ ^[Yy]$ ]] || [ -z "$IP_CONFIRM" ]; then
+                    CONFIRMED=true
+                elif [[ "$IP_CONFIRM" =~ ^[Nn]$ ]]; then
+                    # Keep asking for new IP until valid
+                    while [ -z "$SERVER_IP" ] || ! validate_ip "$SERVER_IP"; do
+                        echo -e "${YELLOW}Please enter the correct server IP address:${NC}"
+                        read -r SERVER_IP
+                        if [ -z "$SERVER_IP" ]; then
+                            log_error "Server IP cannot be empty"
+                        elif ! validate_ip "$SERVER_IP"; then
+                            log_error "Invalid IP address format: $SERVER_IP"
+                            SERVER_IP=""
+                        fi
+                    done
+                    CONFIRMED=true
+                else
+                    log_error "Please answer Y (yes) or N (no)"
+                fi
+            done
         fi
     fi
+
+    log_success "Server IP detected: $SERVER_IP"
+}
+
+################################################################################
+# Install Backend Only Function
+################################################################################
+install_backend_only() {
+    clear
+    echo -e "${CYAN}${BOLD}"
+    cat << "EOF"
+   _____ _       _       _     ____
+  / ____| |     | |     | |   |  _ \
+ | |    | |_   _| |_ ___| |__ | |_) | __ _ _   _
+ | |    | | | | | __/ __| '_ \|  _ / / _` | | | |
+ | |____| | |_| | || (__| | | | |   | (_| | |_| |
+  \_____|_|\__,_|\__\___|_| |_| |   \__,_|\__,  |
+                                            __/ |
+     Backend Installation - Debian 11      |___/
+EOF
+    echo -e "${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+
+    # Run common setup first (privileges, tools, IP detection)
+    common_setup "backend"
+
+    ################################################################################
+    # Backend Configuration
+    ################################################################################
+    log_header "Backend Configuration"
+
+    # Installation directory
+    if [ "$INTERACTIVE_MODE" = true ]; then
+        echo -e "${YELLOW}Enter installation directory (default: ${DEFAULT_INSTALL_DIR}):${NC}"
+        read -r USER_INSTALL_DIR
+        INSTALL_DIR="${USER_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
+    else
+        INSTALL_DIR="$DEFAULT_INSTALL_DIR"
+    fi
     
-    echo -e "  ${YELLOW}Options:${NC}"
-    echo -e "    1) Stop the service using port $DEFAULT_BACKEND_PORT"
-    echo -e "    2) Choose a different port"
-    echo -e "    3) Cancel installation"
-    echo -n "  Choose option (1-3): "
-    read -r PORT_OPTION
-    
-    case "$PORT_OPTION" in
-        1)
-            log_step "Attempting to stop service using port $DEFAULT_BACKEND_PORT..."
-            # Try to identify and stop the service
-            if systemctl is-active --quiet clutchpay-backend; then
-                $SUDO_CMD systemctl stop clutchpay-backend
-                log_success "Stopped existing clutchpay-backend service"
-            elif systemctl is-active --quiet node; then
-                $SUDO_CMD systemctl stop node
-                log_success "Stopped node service"
+    if [ -d "$INSTALL_DIR" ]; then
+        log_warning "Directory $INSTALL_DIR already exists!"
+        echo -n "  Do you want to overwrite it? (y/N): "
+        read -r OVERWRITE_DIR
+        if [[ ! "$OVERWRITE_DIR" =~ ^[Yy]$ ]]; then
+            log_error "Installation cancelled."
+            exit 1
+        fi
+    fi
+    BACKEND_DIR="$INSTALL_DIR/$BACKEND_SUBDIR"
+    log_success "Installation directory: $INSTALL_DIR"
+
+    # Backend port
+    if [ "$INTERACTIVE_MODE" = true ]; then
+        # In interactive mode, keep asking until valid port is provided
+        while true; do
+            echo -e "${YELLOW}Enter backend port (default: ${DEFAULT_BACKEND_PORT}):${NC}"
+            read -r USER_BACKEND_PORT
+            BACKEND_PORT="${USER_BACKEND_PORT:-$DEFAULT_BACKEND_PORT}"
+            
+            if validate_port "$BACKEND_PORT"; then
+                if check_port "$BACKEND_PORT"; then
+                    log_warning "Port $BACKEND_PORT is already in use!"
+                    echo -e "${YELLOW}Please choose a different port.${NC}"
+                else
+                    break  # Valid and available port
+                fi
             else
-                log_warning "Could not identify the service. You may need to stop it manually."
+                log_error "Invalid port number: $BACKEND_PORT"
             fi
-            ;;
-        2)
-            echo -n "  Enter a new port: "
+        done
+    else
+        BACKEND_PORT="$DEFAULT_BACKEND_PORT"
+        if check_port "$DEFAULT_BACKEND_PORT"; then
+            log_warning "Port $DEFAULT_BACKEND_PORT is in use!"
+            echo -n "  Enter a different port or press Enter to continue: "
             read -r NEW_PORT
-            if validate_port "$NEW_PORT"; then
+            if [ -n "$NEW_PORT" ] && validate_port "$NEW_PORT"; then
                 BACKEND_PORT="$NEW_PORT"
-            else
-                log_error "Invalid port. Installation cancelled."
-                exit 1
             fi
-            ;;
-        *)
-            log_error "Installation cancelled."
+        fi
+    fi
+    log_success "Backend port: $BACKEND_PORT"
+
+    # Frontend location (for CORS configuration)
+    echo ""
+    echo -e "${YELLOW}Enter the FRONTEND server IP (default: ${SERVER_IP}):${NC}"
+    read -r USER_FRONTEND_IP
+    FRONTEND_IP="${USER_FRONTEND_IP:-$SERVER_IP}"
+    
+    # Validate frontend IP
+    while ! validate_ip "$FRONTEND_IP"; do
+        log_error "Invalid IP address format: $FRONTEND_IP"
+        echo -e "${YELLOW}Please enter a valid FRONTEND server IP:${NC}"
+        read -r FRONTEND_IP
+    done
+    
+    echo -e "${YELLOW}Enter the FRONTEND port (default: 80):${NC}"
+    read -r USER_FRONTEND_PORT
+    FRONTEND_PORT="${USER_FRONTEND_PORT:-80}"
+    
+    if ! validate_port "$FRONTEND_PORT"; then
+        log_error "Invalid port number: $FRONTEND_PORT"
+        exit 1
+    fi
+    log_success "Frontend location: ${FRONTEND_IP}:${FRONTEND_PORT}"
+
+    ################################################################################
+    # Install PostgreSQL
+    ################################################################################
+    log_header "Installing PostgreSQL"
+
+    if ! command -v psql &> /dev/null; then
+        log_step "Installing PostgreSQL..."
+        $SUDO_CMD apt-get install -y postgresql postgresql-contrib > /dev/null 2>&1
+        log_success "PostgreSQL installed"
+    else
+        log_success "PostgreSQL already installed"
+    fi
+
+    $SUDO_CMD systemctl enable postgresql > /dev/null 2>&1
+    $SUDO_CMD systemctl start postgresql
+
+    # Create database and user
+    log_step "Configuring database..."
+    sudo -u postgres psql -c "DROP DATABASE IF EXISTS ${DB_NAME};" > /dev/null 2>&1 || true
+    sudo -u postgres psql -c "DROP USER IF EXISTS ${DB_USER};" > /dev/null 2>&1 || true
+    sudo -u postgres psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';" > /dev/null 2>&1
+    sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};" > /dev/null 2>&1
+    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};" > /dev/null 2>&1
+    log_success "Database ${DB_NAME} and user ${DB_USER} created"
+    DB_CONFIGURED=true
+
+    ################################################################################
+    # Install Node.js
+    ################################################################################
+    log_header "Installing Node.js"
+
+    if ! command -v node &> /dev/null || ! node --version 2>/dev/null | grep -q "v2[0-9]"; then
+        log_step "Installing Node.js 20.x..."
+        curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - > /dev/null 2>&1
+        $SUDO_CMD apt-get install -y nodejs > /dev/null 2>&1
+        log_success "Node.js $(node --version) installed"
+    else
+        log_success "Node.js $(node --version) already installed"
+    fi
+    NODE_INSTALLED=true
+
+    # Install pnpm
+    log_step "Installing pnpm..."
+    $SUDO_CMD npm install -g pnpm > /dev/null 2>&1
+    log_success "pnpm installed"
+
+    ################################################################################
+    # Clone Repository
+    ################################################################################
+    log_header "Cloning Repository"
+
+    log_step "Cloning ClutchPay repository (tag: $REPO_TAG)..."
+    rm -rf "$INSTALL_DIR" 2>/dev/null || true
+    mkdir -p "$INSTALL_DIR"
+    git clone --depth 1 --branch "$REPO_TAG" "$REPO_URL" "$INSTALL_DIR" 2>&1 | tail -3
+    REPO_CLONED=true
+    log_success "Repository cloned to $INSTALL_DIR"
+
+    if [ ! -d "$BACKEND_DIR" ]; then
+        log_error "Backend directory not found at $BACKEND_DIR"
+        cleanup
+        exit 1
+    fi
+
+    ################################################################################
+    # Configure Backend
+    ################################################################################
+    log_header "Configuring Backend"
+
+    cd "$BACKEND_DIR"
+
+    log_step "Generating secure secrets..."
+    if ! command -v openssl &> /dev/null; then
+        $SUDO_CMD apt-get install -y openssl > /dev/null 2>&1
+    fi
+
+    JWT_SECRET=$(openssl rand -base64 32)
+    NEXTAUTH_SECRET=$(openssl rand -base64 32)
+
+    log_step "Creating backend .env file..."
+    cat > "$BACKEND_DIR/.env" << EOF
+# Database Configuration
+POSTGRES_DB=${DB_NAME}
+POSTGRES_USER=${DB_USER}
+POSTGRES_PASSWORD=${DB_PASSWORD}
+DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}?schema=public"
+
+# Server Configuration
+BACKEND_PORT=${BACKEND_PORT}
+NODE_ENV=production
+NEXT_PUBLIC_API_URL=http://${SERVER_IP}:${BACKEND_PORT}
+
+# Authentication
+NEXTAUTH_URL=http://${SERVER_IP}:${BACKEND_PORT}
+NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+JWT_SECRET=${JWT_SECRET}
+
+# Frontend (for CORS)
+FRONTEND_URL=http://${FRONTEND_IP}:${FRONTEND_PORT}
+FRONTEND_PORT=${FRONTEND_PORT}
+SERVER_IP=${FRONTEND_IP}
+
+# Cloudinary Configuration
+NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=clutchpay
+NEXT_PUBLIC_CLOUDINARY_API_KEY=316689144486275
+CLOUDINARY_API_SECRET=7OboPECLxjrFxAsY0C4uFk9ny3A
+EOF
+    log_success "Backend .env created"
+
+    ################################################################################
+    # Build Backend
+    ################################################################################
+    log_header "Building Backend Application"
+
+    cd "$BACKEND_DIR"
+
+    log_step "Installing dependencies..."
+    export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+    if ! pnpm install --frozen-lockfile 2>&1; then
+        log_error "Dependency installation failed"
+        cleanup
+        exit 1
+    fi
+    log_success "Dependencies installed"
+
+    log_step "Generating Prisma Client..."
+    if ! pnpm prisma generate 2>&1; then
+        log_error "Prisma generation failed"
+        cleanup
+        exit 1
+    fi
+    log_success "Prisma Client generated"
+
+    log_step "Running database migrations..."
+    if ! pnpm prisma migrate deploy 2>&1; then
+        log_error "Database migrations failed"
+        cleanup
+        exit 1
+    fi
+    log_success "Database migrations completed"
+
+    log_step "Building Next.js application..."
+    export FRONTEND_URL="http://${FRONTEND_IP}:${FRONTEND_PORT}"
+    export SERVER_IP="${FRONTEND_IP}"
+
+    if ! pnpm build 2>&1 | tee /tmp/clutchpay-build.log | tail -20; then
+        log_error "Build failed."
+        cleanup
+        exit 1
+    fi
+
+    if [ ! -f "$BACKEND_DIR/.next/standalone/server.js" ]; then
+        log_error "Build completed but server.js not found"
+        cleanup
+        exit 1
+    fi
+    log_success "Backend built successfully"
+
+    ################################################################################
+    # Create Systemd Service
+    ################################################################################
+    log_header "Creating Backend Service"
+
+    log_step "Creating systemd service..."
+    $SUDO_CMD tee /etc/systemd/system/clutchpay-backend.service > /dev/null << EOF
+[Unit]
+Description=ClutchPay Backend API
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+WorkingDirectory=$BACKEND_DIR
+EnvironmentFile=$BACKEND_DIR/.env
+ExecStart=/usr/bin/node $BACKEND_DIR/.next/standalone/server.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+Environment=NODE_ENV=production
+Environment=HOSTNAME=0.0.0.0
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    SERVICE_INSTALLED=true
+
+    $SUDO_CMD systemctl daemon-reload
+    $SUDO_CMD systemctl enable clutchpay-backend.service > /dev/null 2>&1
+    $SUDO_CMD systemctl start clutchpay-backend.service
+
+    log_step "Waiting for backend to start..."
+    sleep 5
+
+    if $SUDO_CMD systemctl is-active --quiet clutchpay-backend.service; then
+        log_success "Backend service created and started"
+    else
+        log_warning "Backend service may have issues. Check: journalctl -u clutchpay-backend -f"
+    fi
+
+    ################################################################################
+    # Configure Firewall
+    ################################################################################
+    if command -v ufw &> /dev/null; then
+        log_header "Configuring Firewall"
+        log_step "Opening port ${BACKEND_PORT}..."
+        $SUDO_CMD ufw allow ${BACKEND_PORT}/tcp > /dev/null 2>&1 || true
+        log_success "Firewall rules added"
+    fi
+
+    ################################################################################
+    # Backend Installation Complete
+    ################################################################################
+    SUCCESS=true
+    log_header "Backend Installation Complete! 🎉"
+
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}${BOLD}  ClutchPay Backend has been successfully installed!${NC}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+
+    echo -e "${CYAN}🌐 Backend URL:${NC} ${GREEN}http://${SERVER_IP}:${BACKEND_PORT}${NC}\n"
+    echo -e "${CYAN}📂 Installation Directory:${NC} ${BACKEND_DIR}\n"
+    echo -e "${CYAN}🗄️  Database:${NC} PostgreSQL - ${DB_NAME}\n"
+    echo -e "${CYAN}🔧 Service:${NC} systemctl status clutchpay-backend\n"
+}
+
+################################################################################
+# Install Frontend Only Function
+################################################################################
+install_frontend_only() {
+    clear
+    echo -e "${CYAN}${BOLD}"
+    cat << "EOF"
+   _____ _       _       _     ____
+  / ____| |     | |     | |   |  _ \
+ | |    | |_   _| |_ ___| |__ | |_) | __ _ _   _
+ | |    | | | | | __/ __| '_ \|  _ / / _` | | | |
+ | |____| | |_| | || (__| | | | |   | (_| | |_| |
+  \_____|_|\__,_|\__\___|_| |_| |   \__,_|\__,  |
+                                            __/ |
+    Frontend Installation - Debian 11      |___/
+EOF
+    echo -e "${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+
+    # Run common setup first (privileges, tools, IP detection)
+    common_setup "frontend"
+
+    ################################################################################
+    # Frontend Configuration
+    ################################################################################
+    log_header "Frontend Configuration"
+
+    # Frontend port
+    if [ "$INTERACTIVE_MODE" = true ]; then
+        # In interactive mode, keep asking until valid port is provided
+        while true; do
+            echo -e "${YELLOW}Enter frontend port (default: ${DEFAULT_FRONTEND_PORT}):${NC}"
+            read -r USER_FRONTEND_PORT
+            FRONTEND_PORT="${USER_FRONTEND_PORT:-$DEFAULT_FRONTEND_PORT}"
+            
+            if validate_port "$FRONTEND_PORT"; then
+                if check_port "$FRONTEND_PORT"; then
+                    log_warning "Port $FRONTEND_PORT is already in use!"
+                    echo -e "${YELLOW}Please choose a different port.${NC}"
+                else
+                    break  # Valid and available port
+                fi
+            else
+                log_error "Invalid port number: $FRONTEND_PORT"
+            fi
+        done
+    else
+        FRONTEND_PORT="$DEFAULT_FRONTEND_PORT"
+        if check_port "$DEFAULT_FRONTEND_PORT"; then
+            log_warning "Port $DEFAULT_FRONTEND_PORT is in use!"
+            echo -n "  Enter a different port or press Enter to continue: "
+            read -r NEW_PORT
+            if [ -n "$NEW_PORT" ] && validate_port "$NEW_PORT"; then
+                FRONTEND_PORT="$NEW_PORT"
+            fi
+        fi
+    fi
+    log_success "Frontend port: $FRONTEND_PORT"
+
+    # Backend location
+    echo ""
+    if [ "$INTERACTIVE_MODE" = true ]; then
+        # In interactive mode, keep asking until valid IP is provided
+        while [ -z "$BACKEND_IP" ] || ! validate_ip "$BACKEND_IP"; do
+            echo -e "${YELLOW}Enter the BACKEND server IP:${NC}"
+            read -r BACKEND_IP
+            if [ -z "$BACKEND_IP" ]; then
+                log_error "Backend IP cannot be empty"
+            elif ! validate_ip "$BACKEND_IP"; then
+                log_error "Invalid IP address format: $BACKEND_IP"
+                BACKEND_IP=""
+            fi
+        done
+        
+        while true; do
+            echo -e "${YELLOW}Enter the BACKEND port (default: 3000):${NC}"
+            read -r USER_BACKEND_PORT
+            BACKEND_PORT="${USER_BACKEND_PORT:-3000}"
+            if validate_port "$BACKEND_PORT"; then
+                break
+            else
+                log_error "Invalid port number: $BACKEND_PORT"
+            fi
+        done
+    else
+        echo -e "${YELLOW}Enter the BACKEND server IP:${NC}"
+        read -r BACKEND_IP
+        if [ -z "$BACKEND_IP" ]; then
+            log_error "Backend IP is required"
             exit 1
-            ;;
-    esac
-fi
+        fi
+        
+        echo -e "${YELLOW}Enter the BACKEND port (default: 3000):${NC}"
+        read -r BACKEND_PORT
+        BACKEND_PORT="${BACKEND_PORT:-3000}"
+    fi
+    log_success "Backend location: ${BACKEND_IP}:${BACKEND_PORT}"
 
-log_success "Backend port: $BACKEND_PORT"
+    ################################################################################
+    # Install Apache
+    ################################################################################
+    log_header "Installing Apache Web Server"
 
-echo ""
+    if ! command -v apache2 &> /dev/null; then
+        log_step "Installing Apache..."
+        $SUDO_CMD apt-get install -y apache2 > /dev/null 2>&1
+        log_success "Apache installed"
+    else
+        log_success "Apache already installed"
+    fi
+    APACHE_CONFIGURED=true
 
-# === Frontend Port (Apache) ===
-echo -e "${YELLOW}Frontend Port (Apache Web Server)${NC}"
-echo -e "  Default: ${GREEN}$DEFAULT_FRONTEND_PORT${NC}"
+    $SUDO_CMD a2enmod rewrite > /dev/null 2>&1
+    $SUDO_CMD a2enmod headers > /dev/null 2>&1
+    log_success "Apache modules enabled"
 
-FRONTEND_PORT="$DEFAULT_FRONTEND_PORT"
+    ################################################################################
+    # Clone Repository (frontend only)
+    ################################################################################
+    log_header "Cloning Frontend Files"
 
-# Check if default port is in use
-if check_port "$DEFAULT_FRONTEND_PORT"; then
-    log_warning "Port $DEFAULT_FRONTEND_PORT is currently in use!"
-    # Check what's using it
-    if command -v ss &> /dev/null; then
-        USING_PORT=$(ss -tlnp 2>/dev/null | grep ":$DEFAULT_FRONTEND_PORT " | head -1 || true)
-        if [ -n "$USING_PORT" ]; then
-            log_info "Currently using port $DEFAULT_FRONTEND_PORT: $USING_PORT"
+    TEMP_CLONE="/tmp/clutchpay-clone-$$"
+    log_step "Cloning repository (tag: $REPO_TAG)..."
+    git clone --depth 1 --branch "$REPO_TAG" "$REPO_URL" "$TEMP_CLONE" 2>&1 | tail -3
+    log_success "Repository cloned"
+
+    ################################################################################
+    # Configure Apache Virtual Host
+    ################################################################################
+    log_header "Configuring Apache Virtual Host"
+
+    APACHE_DOC_ROOT="/var/www/clutchpay"
+    log_step "Copying frontend files to ${APACHE_DOC_ROOT}..."
+    $SUDO_CMD mkdir -p "$APACHE_DOC_ROOT"
+    $SUDO_CMD cp -r "$TEMP_CLONE/frontend"/* "$APACHE_DOC_ROOT/"
+    $SUDO_CMD chown -R www-data:www-data "$APACHE_DOC_ROOT"
+    rm -rf "$TEMP_CLONE"
+    log_success "Frontend files copied"
+
+    # Update config.js with backend IP and port
+    log_step "Configuring frontend backend connection..."
+    if [ -f "$APACHE_DOC_ROOT/JS/config.js" ]; then
+        $SUDO_CMD sed -i "s|const BACKEND_IP = '.*';|const BACKEND_IP = '${BACKEND_IP}';|" "$APACHE_DOC_ROOT/JS/config.js"
+        $SUDO_CMD sed -i "s|const BACKEND_PORT = [0-9]*;|const BACKEND_PORT = ${BACKEND_PORT};|" "$APACHE_DOC_ROOT/JS/config.js"
+        log_success "Frontend configured to use backend at ${BACKEND_IP}:${BACKEND_PORT}"
+    else
+        log_warning "JS/config.js not found"
+    fi
+
+    # Create Apache virtual host
+    log_step "Creating Apache virtual host..."
+
+    if [ "$FRONTEND_PORT" -ne 80 ]; then
+        if ! grep -q "Listen $FRONTEND_PORT" /etc/apache2/ports.conf 2>/dev/null; then
+            echo "Listen $FRONTEND_PORT" | $SUDO_CMD tee -a /etc/apache2/ports.conf > /dev/null
+        fi
+    fi
+
+    $SUDO_CMD tee /etc/apache2/sites-available/clutchpay.conf > /dev/null << EOF
+<VirtualHost *:${FRONTEND_PORT}>
+    ServerName ${SERVER_IP}
+    ServerAdmin webmaster@localhost
+    DocumentRoot ${APACHE_DOC_ROOT}
+
+    <Directory ${APACHE_DOC_ROOT}>
+        Options -Indexes +FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    ErrorLog \${APACHE_LOG_DIR}/clutchpay-error.log
+    CustomLog \${APACHE_LOG_DIR}/clutchpay-access.log combined
+</VirtualHost>
+EOF
+
+    $SUDO_CMD a2dissite 000-default.conf > /dev/null 2>&1 || true
+    $SUDO_CMD a2ensite clutchpay.conf > /dev/null 2>&1
+
+    log_step "Testing Apache configuration..."
+    if ! $SUDO_CMD apache2ctl configtest 2>&1 | grep -q "Syntax OK"; then
+        log_error "Apache configuration test failed"
+        exit 1
+    fi
+
+    $SUDO_CMD systemctl enable apache2 > /dev/null 2>&1
+    $SUDO_CMD systemctl reload apache2
+    log_success "Apache configured and reloaded"
+
+    ################################################################################
+    # Configure Firewall
+    ################################################################################
+    if command -v ufw &> /dev/null; then
+        log_header "Configuring Firewall"
+        log_step "Opening port ${FRONTEND_PORT}..."
+        $SUDO_CMD ufw allow ${FRONTEND_PORT}/tcp > /dev/null 2>&1 || true
+        log_success "Firewall rules added"
+    fi
+
+    ################################################################################
+    # Frontend Installation Complete
+    ################################################################################
+    SUCCESS=true
+    log_header "Frontend Installation Complete! 🎉"
+
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}${BOLD}  ClutchPay Frontend has been successfully installed!${NC}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+
+    echo -e "${CYAN}🌐 Frontend URL:${NC} ${GREEN}http://${SERVER_IP}:${FRONTEND_PORT}${NC}\n"
+    echo -e "${CYAN}📂 Document Root:${NC} ${APACHE_DOC_ROOT}\n"
+    echo -e "${CYAN}🔗 Backend:${NC} ${BACKEND_IP}:${BACKEND_PORT}\n"
+    echo -e "${CYAN}🔧 Service:${NC} systemctl status apache2\n"
+}
+
+################################################################################
+# Main Installation Function
+################################################################################
+install_clutchpay() {
+
+################################################################################
+# Banner
+################################################################################
+clear
+echo -e "${CYAN}${BOLD}"
+cat << "EOF"
+   _____ _       _       _     ____
+  / ____| |     | |     | |   |  _ \
+ | |    | |_   _| |_ ___| |__ | |_) | __ _ _   _
+ | |    | | | | | __/ __| '_ \|  _ / / _` | | | |
+ | |____| | |_| | || (__| | | | |   | (_| | |_| |
+  \_____|_|\__,_|\__\___|_| |_| |   \__,_|\__,  |
+                                            __/ |
+          Installation Script - Debian 11  |___/
+EOF
+echo -e "${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+
+################################################################################
+# Configuration (interactive or default)
+################################################################################
+if [ "$INTERACTIVE_MODE" = true ]; then
+    log_header "Configuration Options"
+
+    echo ""
+    echo -e "${CYAN}${BOLD}Please configure the installation settings:${NC}"
+    echo ""
+
+    # === Installation Directory ===
+    echo -e "${YELLOW}Enter installation directory (default: ${DEFAULT_INSTALL_DIR}):${NC}"
+    read -r USER_INSTALL_DIR
+    INSTALL_DIR="${USER_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
+
+    # Check if directory already exists
+    if [ -d "$INSTALL_DIR" ]; then
+        log_warning "Directory $INSTALL_DIR already exists!"
+        echo -n "  Do you want to overwrite it? (y/N): "
+        read -r OVERWRITE_DIR
+        if [[ ! "$OVERWRITE_DIR" =~ ^[Yy]$ ]]; then
+            log_error "Installation cancelled. Please choose a different directory."
+            exit 1
+        fi
+    fi
+
+    BACKEND_DIR="$INSTALL_DIR/$BACKEND_SUBDIR"
+    FRONTEND_DIR="$INSTALL_DIR/frontend"
+    log_success "Installation directory: $INSTALL_DIR"
+
+    echo ""
+
+    # === Backend Port ===
+    while true; do
+        echo -e "${YELLOW}Enter backend port (default: $DEFAULT_BACKEND_PORT):${NC}"
+        read -r USER_BACKEND_PORT
+        BACKEND_PORT="${USER_BACKEND_PORT:-$DEFAULT_BACKEND_PORT}"
+        
+        if validate_port "$BACKEND_PORT"; then
+            if check_port "$BACKEND_PORT"; then
+                log_warning "Port $BACKEND_PORT is currently in use!"
+            else
+                break
+            fi
+        else
+            log_error "Invalid port number: $BACKEND_PORT"
+        fi
+    done
+    log_success "Backend port: $BACKEND_PORT"
+
+    echo ""
+
+    # === Frontend Port (Apache) ===
+    while true; do
+        echo -e "${YELLOW}Enter frontend port (default: $DEFAULT_FRONTEND_PORT):${NC}"
+        read -r USER_FRONTEND_PORT
+        FRONTEND_PORT="${USER_FRONTEND_PORT:-$DEFAULT_FRONTEND_PORT}"
+        
+        if validate_port "$FRONTEND_PORT"; then
+            if check_port "$FRONTEND_PORT"; then
+                log_warning "Port $FRONTEND_PORT is currently in use!"
+            else
+                break
+            fi
+        else
+            log_error "Invalid port number: $FRONTEND_PORT"
+        fi
+    done
+    log_success "Frontend port: $FRONTEND_PORT"
+
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}${BOLD}Configuration Summary:${NC}"
+    echo -e "  Installation directory: ${CYAN}$INSTALL_DIR${NC}"
+    echo -e "  Backend port:          ${CYAN}$BACKEND_PORT${NC}"
+    echo -e "  Frontend port:         ${CYAN}$FRONTEND_PORT${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+else
+    # Non-interactive mode: use defaults
+    INSTALL_DIR="$DEFAULT_INSTALL_DIR"
+    BACKEND_PORT="$DEFAULT_BACKEND_PORT"
+    FRONTEND_PORT="$DEFAULT_FRONTEND_PORT"
+    BACKEND_DIR="$INSTALL_DIR/$BACKEND_SUBDIR"
+    FRONTEND_DIR="$INSTALL_DIR/frontend"
+
+    # Check if directory already exists
+    if [ -d "$INSTALL_DIR" ]; then
+        log_warning "Directory $INSTALL_DIR already exists!"
+        echo -n "  Do you want to overwrite it? (y/N): "
+        read -r OVERWRITE_DIR
+        if [[ ! "$OVERWRITE_DIR" =~ ^[Yy]$ ]]; then
+            log_error "Installation cancelled. Please choose a different directory."
+            exit 1
         fi
     fi
     
-    echo -e "  ${YELLOW}Options:${NC}"
-    echo -e "    1) Stop the service using port $DEFAULT_FRONTEND_PORT"
-    echo -e "    2) Choose a different port"
-    echo -e "    3) Cancel installation"
-    echo -n "  Choose option (1-3): "
-    read -r PORT_OPTION
-    
-    case "$PORT_OPTION" in
-        1)
-            log_step "Attempting to stop service using port $DEFAULT_FRONTEND_PORT..."
-            # Try to identify and stop the service
-            if systemctl is-active --quiet apache2; then
-                $SUDO_CMD systemctl stop apache2
-                log_success "Stopped existing apache2 service"
-            elif systemctl is-active --quiet nginx; then
-                $SUDO_CMD systemctl stop nginx
-                log_success "Stopped nginx service"
-            else
-                log_warning "Could not identify the service. You may need to stop it manually."
-            fi
-            ;;
-        2)
-            echo -n "  Enter a new port: "
-            read -r NEW_PORT
-            if validate_port "$NEW_PORT"; then
-                FRONTEND_PORT="$NEW_PORT"
-            else
-                log_error "Invalid port. Installation cancelled."
-                exit 1
-            fi
-            ;;
-        *)
-            log_error "Installation cancelled."
-            exit 1
-            ;;
-    esac
+    log_info "Using default configuration:"
+    log_info "  Installation directory: $INSTALL_DIR"
+    log_info "  Backend port:          $BACKEND_PORT"
+    log_info "  Frontend port:         $FRONTEND_PORT"
+    echo ""
 fi
-
-log_success "Frontend port: $FRONTEND_PORT"
-
-echo ""
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${GREEN}${BOLD}Configuration Summary:${NC}"
-echo -e "  Installation directory: ${CYAN}$INSTALL_DIR${NC}"
-echo -e "  Backend port:          ${CYAN}$BACKEND_PORT${NC}"
-echo -e "  Frontend port:         ${CYAN}$FRONTEND_PORT${NC}"
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo ""
 
 ################################################################################
 # Check sudo availability
@@ -588,10 +1257,9 @@ fi
 ################################################################################
 # Clone Repository
 ################################################################################
+# Clone Repository
+################################################################################
 log_header "Downloading ClutchPay"
-
-REPO_URL="https://github.com/GCousido/ClutchPay.git"
-REPO_TAG="fix-installer"
 
 if [ -d "$INSTALL_DIR" ]; then
     log_warning "Installation directory exists. Backing up..."
@@ -1007,6 +1675,82 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
     
     log_header "Updating Backend"
     
+    # Check for missing environment variables and add them
+    log_step "Checking for missing environment variables..."
+    ADDED_VARS=false
+    
+    # Generate secure secrets for new installations
+    if ! command -v openssl &> /dev/null; then
+        $SUDO_CMD apt-get install -y openssl > /dev/null 2>&1
+    fi
+    
+    # Check and add missing variables
+    if [ -f "$BACKEND_DIR/.env" ]; then
+        # Check each required variable
+        if ! grep -q "^POSTGRES_DB=" "$BACKEND_DIR/.env"; then
+            echo "POSTGRES_DB=${DB_NAME}" >> "$BACKEND_DIR/.env"
+            ADDED_VARS=true
+        fi
+        
+        if ! grep -q "^POSTGRES_USER=" "$BACKEND_DIR/.env"; then
+            echo "POSTGRES_USER=${DB_USER}" >> "$BACKEND_DIR/.env"
+            ADDED_VARS=true
+        fi
+        
+        if ! grep -q "^POSTGRES_PASSWORD=" "$BACKEND_DIR/.env"; then
+            echo "POSTGRES_PASSWORD=${DB_PASSWORD}" >> "$BACKEND_DIR/.env"
+            ADDED_VARS=true
+        fi
+        
+        if ! grep -q "^DATABASE_URL=" "$BACKEND_DIR/.env"; then
+            echo "DATABASE_URL=\"postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}?schema=public\"" >> "$BACKEND_DIR/.env"
+            ADDED_VARS=true
+        fi
+        
+        if ! grep -q "^BACKEND_PORT=" "$BACKEND_DIR/.env"; then
+            echo "BACKEND_PORT=${DEFAULT_BACKEND_PORT}" >> "$BACKEND_DIR/.env"
+            ADDED_VARS=true
+        fi
+        
+        if ! grep -q "^NODE_ENV=" "$BACKEND_DIR/.env"; then
+            echo "NODE_ENV=production" >> "$BACKEND_DIR/.env"
+            ADDED_VARS=true
+        fi
+        
+        if ! grep -q "^NEXTAUTH_SECRET=" "$BACKEND_DIR/.env"; then
+            NEXTAUTH_SECRET=$(openssl rand -base64 32)
+            echo "NEXTAUTH_SECRET=${NEXTAUTH_SECRET}" >> "$BACKEND_DIR/.env"
+            ADDED_VARS=true
+        fi
+        
+        if ! grep -q "^JWT_SECRET=" "$BACKEND_DIR/.env"; then
+            JWT_SECRET=$(openssl rand -base64 32)
+            echo "JWT_SECRET=${JWT_SECRET}" >> "$BACKEND_DIR/.env"
+            ADDED_VARS=true
+        fi
+        
+        if ! grep -q "^NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=" "$BACKEND_DIR/.env"; then
+            echo "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=clutchpay" >> "$BACKEND_DIR/.env"
+            ADDED_VARS=true
+        fi
+        
+        if ! grep -q "^NEXT_PUBLIC_CLOUDINARY_API_KEY=" "$BACKEND_DIR/.env"; then
+            echo "NEXT_PUBLIC_CLOUDINARY_API_KEY=316689144486275" >> "$BACKEND_DIR/.env"
+            ADDED_VARS=true
+        fi
+        
+        if ! grep -q "^CLOUDINARY_API_SECRET=" "$BACKEND_DIR/.env"; then
+            echo "CLOUDINARY_API_SECRET=7OboPECLxjrFxAsY0C4uFk9ny3A" >> "$BACKEND_DIR/.env"
+            ADDED_VARS=true
+        fi
+        
+        if [ "$ADDED_VARS" = true ]; then
+            log_success "Added missing environment variables to .env"
+        else
+            log_success "All environment variables already present"
+        fi
+    fi
+    
     log_step "Installing dependencies..."
     cd "$BACKEND_DIR"
     export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
@@ -1206,28 +1950,85 @@ config_frontend() {
 ################################################################################
 
 # Parse command line arguments
-case "${1:-}" in
-    --update)
-        # Check if a tag was provided as second argument
-        UPDATE_TAG="${2:-}"
+MODE=""
+while [[ $# -gt 0 ]]; do
+    case "${1}" in
+        -i|--interactive)
+            INTERACTIVE_MODE=true
+            shift
+            ;;
+        --backend-only)
+            MODE="backend"
+            shift
+            ;;
+        --frontend-only)
+            MODE="frontend"
+            shift
+            ;;
+        --update)
+            MODE="update"
+            UPDATE_TAG="${2:-}"
+            shift
+            if [[ -n "${UPDATE_TAG}" && ! "${UPDATE_TAG}" =~ ^- ]]; then
+                shift
+            fi
+            ;;
+        --config-backend)
+            MODE="config-backend"
+            shift
+            ;;
+        --config-frontend)
+            MODE="config-frontend"
+            shift
+            ;;
+        --help|-h)
+            echo -e "${CYAN}ClutchPay Installer${NC}"
+            echo ""
+            echo "Usage:"
+            echo "  ./installer.sh                         Full installation (backend + frontend)"
+            echo "  ./installer.sh -i                      Full installation (interactive mode)"
+            echo "  ./installer.sh --backend-only          Install only backend (PostgreSQL, Node.js, API)"
+            echo "  ./installer.sh --backend-only -i       Install backend (interactive mode)"
+            echo "  ./installer.sh --frontend-only         Install only frontend (Apache, static files)"
+            echo "  ./installer.sh --frontend-only -i      Install frontend (interactive mode)"
+            echo "  ./installer.sh --update [tag]          Update to a specific version"
+            echo "  ./installer.sh --config-backend        Configure backend (new frontend location)"
+            echo "  ./installer.sh --config-frontend       Configure frontend (new backend location)"
+            echo "  ./installer.sh --help                  Show this help message"
+            echo ""
+            echo "Interactive mode (-i) options:"
+            echo "  - Prompts for installation directory"
+            echo "  - Prompts for port numbers"
+            echo "  - Confirms auto-detected IP address"
+            echo "  - Prompts for all configuration options"
+            echo ""
+            exit 0
+            ;;
+        *)
+            if [ -z "$MODE" ]; then
+                MODE="full"
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Execute based on mode
+case "${MODE:-full}" in
+    backend)
+        install_backend_only
+        ;;
+    frontend)
+        install_frontend_only
+        ;;
+    update)
         update_clutchpay
         ;;
-    --config-backend)
+    config-backend)
         config_backend
         ;;
-    --config-frontend)
+    config-frontend)
         config_frontend
-        ;;
-    --help|-h)
-        echo -e "${CYAN}ClutchPay Installer${NC}"
-        echo ""
-        echo "Usage:"
-        echo "  ./installer.sh                     Full installation"
-        echo "  ./installer.sh --update [tag]      Update to a specific version"
-        echo "  ./installer.sh --config-backend    Configure backend (new frontend location)"
-        echo "  ./installer.sh --config-frontend   Configure frontend (new backend location)"
-        echo "  ./installer.sh --help              Show this help message"
-        echo ""
         ;;
     *)
         install_clutchpay
