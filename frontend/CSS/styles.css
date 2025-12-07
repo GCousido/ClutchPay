@@ -583,6 +583,44 @@ main {
     transform: rotate(0deg) scale(1);
 }
 
+/* Dark theme fixes for form inputs */
+[data-theme="dark"] .form-group input,
+[data-theme="dark"] .form-group select,
+[data-theme="dark"] .login-box input,
+[data-theme="dark"] .register-box input,
+[data-theme="dark"] .login-box select,
+[data-theme="dark"] .register-box select {
+    background: var(--color-white);
+    color: var(--color-text-primary);
+    border-color: var(--color-border);
+}
+
+[data-theme="dark"] .form-group input:focus,
+[data-theme="dark"] .form-group select:focus,
+[data-theme="dark"] .login-box input:focus,
+[data-theme="dark"] .register-box input:focus,
+[data-theme="dark"] .login-box select:focus,
+[data-theme="dark"] .register-box select:focus {
+    background: var(--color-white);
+    color: var(--color-text-primary);
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(134, 188, 36, 0.15);
+}
+
+[data-theme="dark"] .form-group input::placeholder,
+[data-theme="dark"] .login-box input::placeholder,
+[data-theme="dark"] .register-box input::placeholder {
+    color: var(--color-text-secondary);
+}
+
+/* Dark theme for select dropdown options */
+[data-theme="dark"] .form-group select option,
+[data-theme="dark"] .login-box select option,
+[data-theme="dark"] .register-box select option {
+    background: var(--color-white);
+    color: var(--color-text-primary);
+}
+
 @media (max-width: 768px) {
     body {
         padding-bottom: 7rem;
