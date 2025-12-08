@@ -995,32 +995,27 @@ EOF
     install_apache
 
     ################################################################################
-    # Clone Repository (frontend only)
+    # Clone Repository
     ################################################################################
-    log_header "Cloning Frontend Files"
+    log_header "Cloning Repository"
 
     TEMP_CLONE="/tmp/clutchpay-clone-$$"
     clone_repository_with_permissions "$REPO_URL" "$TEMP_CLONE" "$REPO_TAG"
 
-    ################################################################################
-    # Configure Apache Virtual Host
-    ################################################################################
-    log_header "Configuring Apache Virtual Host"
+    # Verify frontend directory exists
+    if [ ! -d "$TEMP_CLONE/frontend" ]; then
+        log_error "Frontend directory not found in repository"
+        cleanup
+        exit 1
+    fi
 
-    APACHE_DOC_ROOT="/var/www/clutchpay"
-    log_step "Copying frontend files to ${APACHE_DOC_ROOT}..."
-    $SUDO_CMD mkdir -p "$APACHE_DOC_ROOT"
-    $SUDO_CMD cp -r "$TEMP_CLONE/frontend"/* "$APACHE_DOC_ROOT/"
-    $SUDO_CMD chown -R www-data:www-data "$APACHE_DOC_ROOT"
-    log_success "Frontend files copied"
+    ################################################################################
+    # Setup Frontend using helper function
+    ################################################################################
+    setup_frontend_installation "$TEMP_CLONE/frontend" "$FRONTEND_PORT" "$BACKEND_IP" "$BACKEND_PORT"
     
     # Clean up temporary clone directory
     rm -rf "$TEMP_CLONE"
-    
-    ################################################################################
-    # Configure Apache Virtual Host using helper function
-    ################################################################################
-    configure_apache_vhost "$APACHE_DOC_ROOT" "$FRONTEND_PORT" "$BACKEND_IP" "$BACKEND_PORT"
 
     ################################################################################
     # Configure Firewall
