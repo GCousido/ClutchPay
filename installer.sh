@@ -1684,12 +1684,29 @@ config_backend() {
         fi
     done
     
-    echo -e "${YELLOW}Enter the new frontend port (default: 80):${NC}"
-    read -r NEW_FRONTEND_PORT
-    NEW_FRONTEND_PORT="${NEW_FRONTEND_PORT:-80}"
+    while true; do
+        echo -e "${YELLOW}Enter the new frontend port (default: 80):${NC}"
+        read -r NEW_FRONTEND_PORT
+        NEW_FRONTEND_PORT="${NEW_FRONTEND_PORT:-80}"
+        
+        if validate_port "$NEW_FRONTEND_PORT"; then
+            break
+        else
+            log_error "Invalid port number: $NEW_FRONTEND_PORT"
+        fi
+    done
     
-    if ! validate_port "$NEW_FRONTEND_PORT"; then
-        log_error "Invalid port number"
+    # Final confirmation
+    echo -e "\n${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}Please confirm the new frontend location:${NC}"
+    echo -e "  IP:   ${CYAN}$NEW_FRONTEND_IP${NC}"
+    echo -e "  Port: ${CYAN}$NEW_FRONTEND_PORT${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}Is this correct? (Y/n):${NC}"
+    read -r CONFIRM
+    
+    if [[ "$CONFIRM" =~ ^[Nn]$ ]]; then
+        log_error "Configuration cancelled"
         exit 1
     fi
     
@@ -1732,11 +1749,11 @@ config_frontend() {
     log_header "Configure Frontend - Backend Location"
     
     # Ask for frontend directory
-    APACHE_DOC_ROOT="/var/www/clutchpay"
-    echo -e "${YELLOW}Frontend directory (default: ${APACHE_DOC_ROOT}):${NC}"
+    DEFAULT_APACHE_DOC_ROOT="/var/www/clutchpay"
+    echo -e "${YELLOW}Frontend directory (default: ${DEFAULT_APACHE_DOC_ROOT}):${NC}"
     read -r USER_FRONTEND_DIR
     
-    FRONTEND_DIR="${USER_FRONTEND_DIR:-$APACHE_DOC_ROOT}"
+    FRONTEND_DIR="${USER_FRONTEND_DIR:-$DEFAULT_APACHE_DOC_ROOT}"
     
     if [ ! -d "$FRONTEND_DIR" ]; then
         log_error "Frontend directory not found at $FRONTEND_DIR"
@@ -1759,12 +1776,29 @@ config_frontend() {
         fi
     done
     
-    echo -e "${YELLOW}Enter the new backend API port (default: 3000):${NC}"
-    read -r NEW_BACKEND_PORT
-    NEW_BACKEND_PORT="${NEW_BACKEND_PORT:-3000}"
+    while true; do
+        echo -e "${YELLOW}Enter the new backend API port (default: 3000):${NC}"
+        read -r NEW_BACKEND_PORT
+        NEW_BACKEND_PORT="${NEW_BACKEND_PORT:-3000}"
+        
+        if validate_port "$NEW_BACKEND_PORT"; then
+            break
+        else
+            log_error "Invalid port number: $NEW_BACKEND_PORT"
+        fi
+    done
     
-    if ! validate_port "$NEW_BACKEND_PORT"; then
-        log_error "Invalid port number"
+    # Final confirmation
+    echo -e "\n${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}Please confirm the new backend location:${NC}"
+    echo -e "  IP:   ${CYAN}$NEW_BACKEND_IP${NC}"
+    echo -e "  Port: ${CYAN}$NEW_BACKEND_PORT${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}Is this correct? (Y/n):${NC}"
+    read -r CONFIRM
+    
+    if [[ "$CONFIRM" =~ ^[Nn]$ ]]; then
+        log_error "Configuration cancelled"
         exit 1
     fi
     
