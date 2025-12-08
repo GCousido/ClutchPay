@@ -358,9 +358,8 @@ configure_apache_vhost() {
 </VirtualHost>
 EOF
 
-    # Disable default site and enable clutchpay
+    # Enable clutchpay site (don't disable default site to preserve existing configs)
     log_step "Enabling ClutchPay site..."
-    $SUDO_CMD a2dissite 000-default.conf > /dev/null 2>&1 || true
     $SUDO_CMD a2ensite clutchpay.conf > /dev/null 2>&1
 
     # Test Apache configuration
@@ -541,19 +540,72 @@ setup_frontend_installation() {
     local frontend_port="$2"
     local backend_ip="$3"
     local backend_port="$4"
+    local apache_doc_root="/var/www/clutchpay"
 
     log_header "Setting up Frontend"
 
+    # Ask for Apache document root in interactive mode
+    if [ "$INTERACTIVE_MODE" = true ]; then
+        echo -e "${YELLOW}Enter Apache document root (default: /var/www/clutchpay):${NC}"
+        read -r USER_APACHE_DOC_ROOT
+        apache_doc_root="${USER_APACHE_DOC_ROOT:-/var/www/clutchpay}"
+    fi
+    
+    log_step "Using Apache document root: $apache_doc_root"
+
+    # Check if Apache document root already exists
+    if [ -d "$apache_doc_root" ] && [ -n "$(ls -A "$apache_doc_root" 2>/dev/null)" ]; then
+        log_warning "Directory $apache_doc_root already exists with files!"
+        
+        if [ "$INTERACTIVE_MODE" = true ]; then
+            echo -e "${YELLOW}What would you like to do?${NC}"
+            echo "  1) Overwrite existing files"
+            echo "  2) Backup existing files and install new ones"
+            echo "  3) Cancel installation"
+            echo -n "  Enter your choice (1-3): "
+            read -r CHOICE
+            
+            case "$CHOICE" in
+                1)
+                    log_step "Overwriting existing files..."
+                    ;;
+                2)
+                    BACKUP_DIR="${apache_doc_root}.backup.$(date +%s)"
+                    log_step "Backing up existing files to $BACKUP_DIR..."
+                    $SUDO_CMD mv "$apache_doc_root" "$BACKUP_DIR"
+                    log_success "Backup created at $BACKUP_DIR"
+                    ;;
+                3)
+                    log_error "Installation cancelled by user"
+                    cleanup
+                    exit 1
+                    ;;
+                *)
+                    log_error "Invalid choice: $CHOICE"
+                    cleanup
+                    exit 1
+                    ;;
+            esac
+        else
+            log_error "Directory $apache_doc_root already has files!"
+            log_info "In non-interactive mode, the directory must be empty or not exist."
+            log_info "Options:"
+            log_info "  1. Run with -i flag for interactive mode to choose an action"
+            log_info "  2. Manually backup/move the directory: sudo mv $apache_doc_root ${apache_doc_root}.backup"
+            cleanup
+            exit 1
+        fi
+    fi
+
     # Copy frontend files to Apache document root
-    APACHE_DOC_ROOT="/var/www/clutchpay"
-    log_step "Copying frontend files to ${APACHE_DOC_ROOT}..."
-    $SUDO_CMD mkdir -p "$APACHE_DOC_ROOT"
-    $SUDO_CMD cp -r "$frontend_dir"/* "$APACHE_DOC_ROOT/"
-    $SUDO_CMD chown -R www-data:www-data "$APACHE_DOC_ROOT"
+    log_step "Copying frontend files to ${apache_doc_root}..."
+    $SUDO_CMD mkdir -p "$apache_doc_root"
+    $SUDO_CMD cp -r "$frontend_dir"/* "$apache_doc_root/"
+    $SUDO_CMD chown -R www-data:www-data "$apache_doc_root"
     log_success "Frontend files copied"
 
     # Configure Apache Virtual Host using helper function
-    configure_apache_vhost "$APACHE_DOC_ROOT" "$frontend_port" "$backend_ip" "$backend_port"
+    configure_apache_vhost "$apache_doc_root" "$frontend_port" "$backend_ip" "$backend_port"
 }
 
 
@@ -757,12 +809,45 @@ EOF
         INSTALL_DIR="$DEFAULT_INSTALL_DIR"
     fi
     
-    if [ -d "$INSTALL_DIR" ]; then
-        log_warning "Directory $INSTALL_DIR already exists!"
-        echo -n "  Do you want to overwrite it? (y/N): "
-        read -r OVERWRITE_DIR
-        if [[ ! "$OVERWRITE_DIR" =~ ^[Yy]$ ]]; then
-            log_error "Installation cancelled."
+    if [ -d "$INSTALL_DIR" ] && [ -n "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]; then
+        log_warning "Directory $INSTALL_DIR already exists with files!"
+        
+        if [ "$INTERACTIVE_MODE" = true ]; then
+            echo -e "${YELLOW}What would you like to do?${NC}"
+            echo "  1) Overwrite existing files"
+            echo "  2) Backup existing files and install new ones"
+            echo "  3) Cancel installation"
+            echo -n "  Enter your choice (1-3): "
+            read -r CHOICE
+            
+            case "$CHOICE" in
+                1)
+                    log_step "Overwriting existing files..."
+                    ;;
+                2)
+                    BACKUP_DIR="${INSTALL_DIR}.backup.$(date +%s)"
+                    log_step "Backing up existing files to $BACKUP_DIR..."
+                    $SUDO_CMD mv "$INSTALL_DIR" "$BACKUP_DIR"
+                    log_success "Backup created at $BACKUP_DIR"
+                    ;;
+                3)
+                    log_error "Installation cancelled by user"
+                    cleanup
+                    exit 1
+                    ;;
+                *)
+                    log_error "Invalid choice: $CHOICE"
+                    cleanup
+                    exit 1
+                    ;;
+            esac
+        else
+            log_error "Directory $INSTALL_DIR already has files!"
+            log_info "In non-interactive mode, the directory must be empty or not exist."
+            log_info "Options:"
+            log_info "  1. Run with -i flag for interactive mode to choose an action"
+            log_info "  2. Manually backup/move the directory: sudo mv $INSTALL_DIR ${INSTALL_DIR}.backup"
+            cleanup
             exit 1
         fi
     fi
@@ -792,11 +877,12 @@ EOF
         BACKEND_PORT="$DEFAULT_BACKEND_PORT"
         if check_port "$DEFAULT_BACKEND_PORT"; then
             log_warning "Port $DEFAULT_BACKEND_PORT is in use!"
-            echo -n "  Enter a different port or press Enter to continue: "
-            read -r NEW_PORT
-            if [ -n "$NEW_PORT" ] && validate_port "$NEW_PORT"; then
-                BACKEND_PORT="$NEW_PORT"
-            fi
+            log_error "In non-interactive mode, the default port must be available."
+            log_info "Options:"
+            log_info "  1. Run with -i flag for interactive mode to choose a different port"
+            log_info "  2. Stop the service using port $DEFAULT_BACKEND_PORT"
+            cleanup
+            exit 1
         fi
     fi
     log_success "Backend port: $BACKEND_PORT"
@@ -837,6 +923,15 @@ EOF
         done
     else
         log_info "Using default frontend port: $FRONTEND_PORT"
+        if check_port "80"; then
+            log_warning "Port 80 is in use!"
+            log_error "In non-interactive mode, the default port must be available."
+            log_info "Options:"
+            log_info "  1. Run with -i flag for interactive mode to choose a different port"
+            log_info "  2. Stop the service using port 80"
+            cleanup
+            exit 1
+        fi
     fi
     log_success "Frontend location: ${FRONTEND_IP}:${FRONTEND_PORT}"
 
@@ -945,11 +1040,12 @@ EOF
         FRONTEND_PORT="$DEFAULT_FRONTEND_PORT"
         if check_port "$DEFAULT_FRONTEND_PORT"; then
             log_warning "Port $DEFAULT_FRONTEND_PORT is in use!"
-            echo -n "  Enter a different port or press Enter to continue: "
-            read -r NEW_PORT
-            if [ -n "$NEW_PORT" ] && validate_port "$NEW_PORT"; then
-                FRONTEND_PORT="$NEW_PORT"
-            fi
+            log_error "In non-interactive mode, the default port must be available."
+            log_info "Options:"
+            log_info "  1. Run with -i flag for interactive mode to choose a different port"
+            log_info "  2. Stop the service using port $DEFAULT_FRONTEND_PORT"
+            cleanup
+            exit 1
         fi
     fi
     log_success "Frontend port: $FRONTEND_PORT"
@@ -995,32 +1091,27 @@ EOF
     install_apache
 
     ################################################################################
-    # Clone Repository (frontend only)
+    # Clone Repository
     ################################################################################
-    log_header "Cloning Frontend Files"
+    log_header "Cloning Repository"
 
     TEMP_CLONE="/tmp/clutchpay-clone-$$"
     clone_repository_with_permissions "$REPO_URL" "$TEMP_CLONE" "$REPO_TAG"
 
-    ################################################################################
-    # Configure Apache Virtual Host
-    ################################################################################
-    log_header "Configuring Apache Virtual Host"
+    # Verify frontend directory exists
+    if [ ! -d "$TEMP_CLONE/frontend" ]; then
+        log_error "Frontend directory not found in repository"
+        cleanup
+        exit 1
+    fi
 
-    APACHE_DOC_ROOT="/var/www/clutchpay"
-    log_step "Copying frontend files to ${APACHE_DOC_ROOT}..."
-    $SUDO_CMD mkdir -p "$APACHE_DOC_ROOT"
-    $SUDO_CMD cp -r "$TEMP_CLONE/frontend"/* "$APACHE_DOC_ROOT/"
-    $SUDO_CMD chown -R www-data:www-data "$APACHE_DOC_ROOT"
-    log_success "Frontend files copied"
+    ################################################################################
+    # Setup Frontend using helper function
+    ################################################################################
+    setup_frontend_installation "$TEMP_CLONE/frontend" "$FRONTEND_PORT" "$BACKEND_IP" "$BACKEND_PORT"
     
     # Clean up temporary clone directory
     rm -rf "$TEMP_CLONE"
-    
-    ################################################################################
-    # Configure Apache Virtual Host using helper function
-    ################################################################################
-    configure_apache_vhost "$APACHE_DOC_ROOT" "$FRONTEND_PORT" "$BACKEND_IP" "$BACKEND_PORT"
 
     ################################################################################
     # Configure Firewall
@@ -1043,7 +1134,6 @@ EOF
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 
     echo -e "${CYAN}🌐 Frontend URL:${NC} ${GREEN}http://${SERVER_IP}:${FRONTEND_PORT}${NC}\n"
-    echo -e "${CYAN}📂 Document Root:${NC} ${APACHE_DOC_ROOT}\n"
     echo -e "${CYAN}🔗 Backend:${NC} ${BACKEND_IP}:${BACKEND_PORT}\n"
     echo -e "${CYAN}🔧 Service:${NC} systemctl status apache2\n"
 }
@@ -1088,13 +1178,33 @@ EOF
 
         # Check if directory already exists
         if [ -d "$INSTALL_DIR" ]; then
-            log_warning "Directory $INSTALL_DIR already exists!"
-            echo -n "  Do you want to overwrite it? (y/N): "
-            read -r OVERWRITE_DIR
-            if [[ ! "$OVERWRITE_DIR" =~ ^[Yy]$ ]]; then
-                log_error "Installation cancelled. Please choose a different directory."
-                exit 1
-            fi
+            log_warning "Directory $INSTALL_DIR already exists with files!"
+            echo -e "${YELLOW}What would you like to do?${NC}"
+            echo "  1) Overwrite existing files"
+            echo "  2) Backup existing files and install new ones"
+            echo "  3) Cancel installation"
+            echo -n "  Enter your choice (1-3): "
+            read -r CHOICE
+            
+            case "$CHOICE" in
+                1)
+                    log_step "Overwriting existing files..."
+                    ;;
+                2)
+                    BACKUP_DIR="${INSTALL_DIR}.backup.$(date +%s)"
+                    log_step "Backing up existing files to $BACKUP_DIR..."
+                    $SUDO_CMD mv "$INSTALL_DIR" "$BACKUP_DIR"
+                    log_success "Backup created at $BACKUP_DIR"
+                    ;;
+                3)
+                    log_error "Installation cancelled by user"
+                    exit 1
+                    ;;
+                *)
+                    log_error "Invalid choice: $CHOICE"
+                    exit 1
+                    ;;
+            esac
         fi
 
         BACKEND_DIR="$INSTALL_DIR/$BACKEND_SUBDIR"
@@ -1159,13 +1269,30 @@ EOF
 
         # Check if directory already exists
         if [ -d "$INSTALL_DIR" ]; then
-            log_warning "Directory $INSTALL_DIR already exists!"
-            echo -n "  Do you want to overwrite it? (y/N): "
-            read -r OVERWRITE_DIR
-            if [[ ! "$OVERWRITE_DIR" =~ ^[Yy]$ ]]; then
-                log_error "Installation cancelled. Please choose a different directory."
-                exit 1
-            fi
+            log_error "Directory $INSTALL_DIR already has files!"
+            log_info "In non-interactive mode, the directory must be empty or not exist."
+            log_info "Options:"
+            log_info "  1. Run with -i flag for interactive mode to choose an action"
+            log_info "  2. Manually backup/move the directory: sudo mv $INSTALL_DIR ${INSTALL_DIR}.backup"
+            exit 1
+        fi
+        
+        # Validate backend port is available
+        if check_port "$DEFAULT_BACKEND_PORT"; then
+            log_error "Backend port $DEFAULT_BACKEND_PORT is already in use!"
+            log_info "Options:"
+            log_info "  1. Run with -i flag for interactive mode to choose a different port"
+            log_info "  2. Stop the service using port $DEFAULT_BACKEND_PORT"
+            exit 1
+        fi
+        
+        # Validate frontend port is available
+        if check_port "$DEFAULT_FRONTEND_PORT"; then
+            log_error "Frontend port $DEFAULT_FRONTEND_PORT is already in use!"
+            log_info "Options:"
+            log_info "  1. Run with -i flag for interactive mode to choose a different port"
+            log_info "  2. Stop the service using port $DEFAULT_FRONTEND_PORT"
+            exit 1
         fi
         
         log_info "Using default configuration:"
