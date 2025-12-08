@@ -1420,8 +1420,10 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
     log_header "Configuration"
     
     # Ask for installation directory
-    echo -e "${YELLOW}Installation directory (default: ${DEFAULT_INSTALL_DIR}):${NC}"
-    read -r USER_INSTALL_DIR
+    if [ "$INTERACTIVE_MODE" = true ]; then
+        echo -e "${YELLOW}Installation directory (default: ${DEFAULT_INSTALL_DIR}):${NC}"
+        read -r USER_INSTALL_DIR
+    fi
     
     INSTALL_DIR="${USER_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
     
@@ -1448,6 +1450,26 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
     
     log_success "Installation found at: $INSTALL_DIR"
     
+    # Determine what to update
+    UPDATE_BACKEND=true
+    UPDATE_FRONTEND=true
+    
+    if [ "$INTERACTIVE_MODE" = true ]; then
+        echo -e "\n${YELLOW}What would you like to update?${NC}"
+        echo "  1) Backend only"
+        echo "  2) Frontend only"
+        echo "  3) Both (backend and frontend)"
+        echo -n "  Enter your choice (1-3): "
+        read -r UPDATE_CHOICE
+        
+        case "$UPDATE_CHOICE" in
+            1) UPDATE_BACKEND=true; UPDATE_FRONTEND=false ;;
+            2) UPDATE_BACKEND=false; UPDATE_FRONTEND=true ;;
+            3) UPDATE_BACKEND=true; UPDATE_FRONTEND=true ;;
+            *) log_error "Invalid choice"; exit 1 ;;
+        esac
+    fi
+    
     # Use tag from parameter or prompt for it
     if [ -n "${UPDATE_TAG:-}" ]; then
         log_info "Using tag from parameter: $UPDATE_TAG"
@@ -1455,13 +1477,25 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
         # Fetch tags first to show available options
         log_step "Fetching available tags..."
         cd "$INSTALL_DIR"
-        git fetch --tags origin > /dev/null 2>&1 || true
+        if ! git fetch --tags origin > /dev/null 2>&1; then
+            log_error "Failed to fetch tags from repository"
+            exit 1
+        fi
         
-        echo -e "\n${CYAN}Available tags:${NC}"
-        git tag -l --sort=-version:refname | head -20 | sed 's/^/  - /'
-        
-        echo -e "\n${YELLOW}Enter the tag to update to:${NC}"
-        read -r UPDATE_TAG
+        if [ "$INTERACTIVE_MODE" = true ]; then
+            echo -e "\n${CYAN}Available tags:${NC}"
+            git tag -l --sort=-version:refname | head -20 | sed 's/^/  - /'
+            
+            echo -e "\n${YELLOW}Enter the tag to update to:${NC}"
+            read -r UPDATE_TAG
+        else
+            # Non-interactive: use latest tag
+            UPDATE_TAG=$(git tag -l --sort=-version:refname | head -1)
+            if [ -z "$UPDATE_TAG" ]; then
+                log_error "No tags found in repository"
+                exit 1
+            fi
+        fi
         
         if [ -z "$UPDATE_TAG" ]; then
             log_error "Tag cannot be empty"
@@ -1469,10 +1503,34 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
         fi
     fi
     
+    # Final confirmation in interactive mode
+    if [ "$INTERACTIVE_MODE" = true ]; then
+        echo -e "\n${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${YELLOW}Update summary:${NC}"
+        echo -e "  Version:  ${CYAN}$UPDATE_TAG${NC}"
+        [ "$UPDATE_BACKEND" = true ] && echo -e "  Backend:  ${GREEN}Yes${NC}" || echo -e "  Backend:  ${RED}No${NC}"
+        [ "$UPDATE_FRONTEND" = true ] && echo -e "  Frontend: ${GREEN}Yes${NC}" || echo -e "  Frontend: ${RED}No${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${YELLOW}Proceed with update? (Y/n):${NC}"
+        read -r CONFIRM
+        
+        if [[ "$CONFIRM" =~ ^[Nn]$ ]]; then
+            log_error "Update cancelled"
+            exit 1
+        fi
+    else
+        log_info "Updating to: $UPDATE_TAG"
+        [ "$UPDATE_BACKEND" = true ] && log_info "Backend: Yes" || log_info "Backend: No"
+        [ "$UPDATE_FRONTEND" = true ] && log_info "Frontend: Yes" || log_info "Frontend: No"
+    fi
+    
     log_header "Updating ClutchPay to $UPDATE_TAG"
     
-    log_step "Stopping backend service..."
-    $SUDO_CMD systemctl stop clutchpay-backend.service
+    # Stop backend service if updating
+    if [ "$UPDATE_BACKEND" = true ]; then
+        log_step "Stopping backend service..."
+        $SUDO_CMD systemctl stop clutchpay-backend.service
+    fi
     
     log_step "Ensuring proper ownership..."
     # Ensure the current user owns the installation directory
@@ -1486,157 +1544,151 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
     # Fetch all tags from origin
     if ! git fetch --tags origin 2>&1; then
         log_error "Failed to fetch tags from repository"
-        log_info "Check your network connection and repository access"
-        $SUDO_CMD systemctl start clutchpay-backend.service
+        [ "$UPDATE_BACKEND" = true ] && $SUDO_CMD systemctl start clutchpay-backend.service
         exit 1
     fi
     
     # Verify tag exists
     if ! git rev-parse "refs/tags/$UPDATE_TAG" > /dev/null 2>&1; then
         log_error "Tag '$UPDATE_TAG' not found in repository"
-        log_info "Available tags:"
-        git tag -l | sed 's/^/  - /'
-        $SUDO_CMD systemctl start clutchpay-backend.service
+        [ "$UPDATE_BACKEND" = true ] && $SUDO_CMD systemctl start clutchpay-backend.service
         exit 1
     fi
     
     # Checkout the tag
     if ! git checkout "$UPDATE_TAG" 2>&1; then
         log_error "Failed to checkout tag $UPDATE_TAG"
-        $SUDO_CMD systemctl start clutchpay-backend.service
+        [ "$UPDATE_BACKEND" = true ] && $SUDO_CMD systemctl start clutchpay-backend.service
         exit 1
     fi
     
     log_success "Code updated to $UPDATE_TAG"
     
-    log_header "Updating Backend"
-    
-    # Check for missing environment variables and add them
-    log_step "Checking for missing environment variables..."
-    ADDED_VARS=false
-    
-    # Generate secure secrets for new installations
-    if ! command -v openssl &> /dev/null; then
-        $SUDO_CMD apt-get install -y openssl > /dev/null 2>&1
+    # Update backend if requested
+    if [ "$UPDATE_BACKEND" = true ]; then
+        log_header "Updating Backend"
+        
+        # Preserve existing .env - only add missing variables
+        log_step "Checking for missing environment variables..."
+        ADDED_VARS=false
+        
+        # Generate secure secrets for new installations
+        if ! command -v openssl &> /dev/null; then
+            $SUDO_CMD apt-get install -y openssl > /dev/null 2>&1
+        fi
+        
+        # Only add missing variables, don't overwrite existing ones
+        if [ -f "$BACKEND_DIR/.env" ]; then
+            # Authentication secrets
+            if ! grep -q "^NEXTAUTH_SECRET=" "$BACKEND_DIR/.env"; then
+                NEXTAUTH_SECRET=$(openssl rand -base64 32)
+                echo "NEXTAUTH_SECRET=${NEXTAUTH_SECRET}" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing NEXTAUTH_SECRET"
+            fi
+            
+            if ! grep -q "^JWT_SECRET=" "$BACKEND_DIR/.env"; then
+                JWT_SECRET=$(openssl rand -base64 32)
+                echo "JWT_SECRET=${JWT_SECRET}" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing JWT_SECRET"
+            fi
+            
+            # Cloudinary configuration
+            if ! grep -q "^NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=" "$BACKEND_DIR/.env"; then
+                echo "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=clutchpay" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME"
+            fi
+            
+            if ! grep -q "^NEXT_PUBLIC_CLOUDINARY_API_KEY=" "$BACKEND_DIR/.env"; then
+                echo "NEXT_PUBLIC_CLOUDINARY_API_KEY=316689144486275" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing NEXT_PUBLIC_CLOUDINARY_API_KEY"
+            fi
+            
+            if ! grep -q "^CLOUDINARY_API_SECRET=" "$BACKEND_DIR/.env"; then
+                echo "CLOUDINARY_API_SECRET=7OboPECLxjrFxAsY0C4uFk9ny3A" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing CLOUDINARY_API_SECRET"
+            fi
+            
+            if [ "$ADDED_VARS" = false ]; then
+                log_success "All environment variables already present"
+            fi
+        fi
+        
+        log_step "Installing dependencies..."
+        cd "$BACKEND_DIR"
+        export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+        if ! pnpm install --frozen-lockfile 2>&1; then
+            log_error "Dependency installation failed"
+            exit 1
+        fi
+        log_success "Dependencies installed"
+        
+        log_step "Generating Prisma Client..."
+        if ! pnpm prisma generate 2>&1; then
+            log_error "Prisma generation failed"
+            exit 1
+        fi
+        log_success "Prisma Client generated"
+        
+        log_step "Running database migrations..."
+        if ! pnpm prisma migrate deploy 2>&1; then
+            log_error "Database migrations failed"
+            exit 1
+        fi
+        log_success "Database migrations completed"
+        
+        log_step "Rebuilding backend application..."
+        # Load environment variables
+        if [ -f "$BACKEND_DIR/.env" ]; then
+            set -a
+            source "$BACKEND_DIR/.env"
+            set +a
+        fi
+        
+        if ! pnpm build 2>&1 | tee /tmp/clutchpay-build.log | tail -20; then
+            log_error "Build failed"
+            exit 1
+        fi
+        log_success "Backend rebuilt"
+        
+        # Restart backend service
+        log_step "Restarting backend service..."
+        $SUDO_CMD systemctl start clutchpay-backend.service
+        log_success "Backend service restarted"
     fi
     
-    # Check and add missing variables
-    if [ -f "$BACKEND_DIR/.env" ]; then
-        # Check each required variable
-        if ! grep -q "^POSTGRES_DB=" "$BACKEND_DIR/.env"; then
-            echo "POSTGRES_DB=${DB_NAME}" >> "$BACKEND_DIR/.env"
-            ADDED_VARS=true
-        fi
+    # Update frontend if requested
+    if [ "$UPDATE_FRONTEND" = true ]; then
+        log_header "Updating Frontend"
         
-        if ! grep -q "^POSTGRES_USER=" "$BACKEND_DIR/.env"; then
-            echo "POSTGRES_USER=${DB_USER}" >> "$BACKEND_DIR/.env"
-            ADDED_VARS=true
-        fi
+        # Get Apache document root from config or use default
+        APACHE_DOC_ROOT="/var/www/clutchpay"
         
-        if ! grep -q "^POSTGRES_PASSWORD=" "$BACKEND_DIR/.env"; then
-            echo "POSTGRES_PASSWORD=${DB_PASSWORD}" >> "$BACKEND_DIR/.env"
-            ADDED_VARS=true
+        log_step "Updating frontend files..."
+        if ! $SUDO_CMD cp -r "$FRONTEND_DIR"/* "$APACHE_DOC_ROOT/" 2>&1; then
+            log_error "Failed to copy frontend files"
+            exit 1
         fi
+        $SUDO_CMD chown -R www-data:www-data "$APACHE_DOC_ROOT"
+        log_success "Frontend files updated"
         
-        if ! grep -q "^DATABASE_URL=" "$BACKEND_DIR/.env"; then
-            echo "DATABASE_URL=\"postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}?schema=public\"" >> "$BACKEND_DIR/.env"
-            ADDED_VARS=true
-        fi
-
-        if ! grep -q "^PORT=" "$BACKEND_DIR/.env"; then
-            echo "PORT=${DEFAULT_BACKEND_PORT}" >> "$BACKEND_DIR/.env"
-            ADDED_VARS=true
-        fi
-        
-        if ! grep -q "^BACKEND_PORT=" "$BACKEND_DIR/.env"; then
-            echo "BACKEND_PORT=${DEFAULT_BACKEND_PORT}" >> "$BACKEND_DIR/.env"
-            ADDED_VARS=true
-        fi
-        
-        if ! grep -q "^NODE_ENV=" "$BACKEND_DIR/.env"; then
-            echo "NODE_ENV=production" >> "$BACKEND_DIR/.env"
-            ADDED_VARS=true
-        fi
-        
-        if ! grep -q "^NEXTAUTH_SECRET=" "$BACKEND_DIR/.env"; then
-            NEXTAUTH_SECRET=$(openssl rand -base64 32)
-            echo "NEXTAUTH_SECRET=${NEXTAUTH_SECRET}" >> "$BACKEND_DIR/.env"
-            ADDED_VARS=true
-        fi
-        
-        if ! grep -q "^JWT_SECRET=" "$BACKEND_DIR/.env"; then
-            JWT_SECRET=$(openssl rand -base64 32)
-            echo "JWT_SECRET=${JWT_SECRET}" >> "$BACKEND_DIR/.env"
-            ADDED_VARS=true
-        fi
-        
-        if ! grep -q "^NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=" "$BACKEND_DIR/.env"; then
-            echo "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=clutchpay" >> "$BACKEND_DIR/.env"
-            ADDED_VARS=true
-        fi
-        
-        if ! grep -q "^NEXT_PUBLIC_CLOUDINARY_API_KEY=" "$BACKEND_DIR/.env"; then
-            echo "NEXT_PUBLIC_CLOUDINARY_API_KEY=316689144486275" >> "$BACKEND_DIR/.env"
-            ADDED_VARS=true
-        fi
-        
-        if ! grep -q "^CLOUDINARY_API_SECRET=" "$BACKEND_DIR/.env"; then
-            echo "CLOUDINARY_API_SECRET=7OboPECLxjrFxAsY0C4uFk9ny3A" >> "$BACKEND_DIR/.env"
-            ADDED_VARS=true
-        fi
-        
-        if [ "$ADDED_VARS" = true ]; then
-            log_success "Added missing environment variables to .env"
-        else
-            log_success "All environment variables already present"
-        fi
+        log_step "Reloading Apache..."
+        $SUDO_CMD systemctl reload apache2
+        log_success "Apache reloaded"
     fi
-    
-    log_step "Installing dependencies..."
-    cd "$BACKEND_DIR"
-    export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-    pnpm install --frozen-lockfile > /dev/null 2>&1
-    log_success "Dependencies installed"
-    
-    log_step "Generating Prisma Client..."
-    pnpm prisma generate > /dev/null 2>&1
-    log_success "Prisma Client generated"
-    
-    log_step "Running database migrations..."
-    pnpm prisma migrate deploy
-    log_success "Database migrations completed"
-    
-    log_step "Rebuilding backend application..."
-    # Load environment variables
-    if [ -f "$BACKEND_DIR/.env" ]; then
-        set -a
-        source "$BACKEND_DIR/.env"
-        set +a
-    fi
-    
-    pnpm build > /dev/null 2>&1
-    log_success "Backend rebuilt"
-    
-    log_header "Updating Frontend"
-    
-    # Get Apache document root from config or use default
-    APACHE_DOC_ROOT="/var/www/clutchpay"
-    
-    log_step "Updating frontend files..."
-    $SUDO_CMD cp -r "$FRONTEND_DIR"/* "$APACHE_DOC_ROOT/"
-    $SUDO_CMD chown -R www-data:www-data "$APACHE_DOC_ROOT"
-    log_success "Frontend files updated"
-    
-    log_step "Restarting services..."
-    $SUDO_CMD systemctl start clutchpay-backend.service
-    $SUDO_CMD systemctl reload apache2
-    log_success "Services restarted"
     
     log_header "Update Complete! 🎉"
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${GREEN}${BOLD}  ClutchPay has been successfully updated!${NC}"
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
     echo -e "${CYAN}Updated to version: ${GREEN}$UPDATE_TAG${NC}\n"
+    [ "$UPDATE_BACKEND" = true ] && echo -e "${GREEN}✓${NC} Backend updated"
+    [ "$UPDATE_FRONTEND" = true ] && echo -e "${GREEN}✓${NC} Frontend updated"
+    echo ""
 }
 
 ################################################################################
@@ -1684,12 +1736,29 @@ config_backend() {
         fi
     done
     
-    echo -e "${YELLOW}Enter the new frontend port (default: 80):${NC}"
-    read -r NEW_FRONTEND_PORT
-    NEW_FRONTEND_PORT="${NEW_FRONTEND_PORT:-80}"
+    while true; do
+        echo -e "${YELLOW}Enter the new frontend port (default: 80):${NC}"
+        read -r NEW_FRONTEND_PORT
+        NEW_FRONTEND_PORT="${NEW_FRONTEND_PORT:-80}"
+        
+        if validate_port "$NEW_FRONTEND_PORT"; then
+            break
+        else
+            log_error "Invalid port number: $NEW_FRONTEND_PORT"
+        fi
+    done
     
-    if ! validate_port "$NEW_FRONTEND_PORT"; then
-        log_error "Invalid port number"
+    # Final confirmation
+    echo -e "\n${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}Please confirm the new frontend location:${NC}"
+    echo -e "  IP:   ${CYAN}$NEW_FRONTEND_IP${NC}"
+    echo -e "  Port: ${CYAN}$NEW_FRONTEND_PORT${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}Is this correct? (Y/n):${NC}"
+    read -r CONFIRM
+    
+    if [[ "$CONFIRM" =~ ^[Nn]$ ]]; then
+        log_error "Configuration cancelled"
         exit 1
     fi
     
@@ -1732,11 +1801,11 @@ config_frontend() {
     log_header "Configure Frontend - Backend Location"
     
     # Ask for frontend directory
-    APACHE_DOC_ROOT="/var/www/clutchpay"
-    echo -e "${YELLOW}Frontend directory (default: ${APACHE_DOC_ROOT}):${NC}"
+    DEFAULT_APACHE_DOC_ROOT="/var/www/clutchpay"
+    echo -e "${YELLOW}Frontend directory (default: ${DEFAULT_APACHE_DOC_ROOT}):${NC}"
     read -r USER_FRONTEND_DIR
     
-    FRONTEND_DIR="${USER_FRONTEND_DIR:-$APACHE_DOC_ROOT}"
+    FRONTEND_DIR="${USER_FRONTEND_DIR:-$DEFAULT_APACHE_DOC_ROOT}"
     
     if [ ! -d "$FRONTEND_DIR" ]; then
         log_error "Frontend directory not found at $FRONTEND_DIR"
@@ -1759,12 +1828,29 @@ config_frontend() {
         fi
     done
     
-    echo -e "${YELLOW}Enter the new backend API port (default: 3000):${NC}"
-    read -r NEW_BACKEND_PORT
-    NEW_BACKEND_PORT="${NEW_BACKEND_PORT:-3000}"
+    while true; do
+        echo -e "${YELLOW}Enter the new backend API port (default: 3000):${NC}"
+        read -r NEW_BACKEND_PORT
+        NEW_BACKEND_PORT="${NEW_BACKEND_PORT:-3000}"
+        
+        if validate_port "$NEW_BACKEND_PORT"; then
+            break
+        else
+            log_error "Invalid port number: $NEW_BACKEND_PORT"
+        fi
+    done
     
-    if ! validate_port "$NEW_BACKEND_PORT"; then
-        log_error "Invalid port number"
+    # Final confirmation
+    echo -e "\n${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}Please confirm the new backend location:${NC}"
+    echo -e "  IP:   ${CYAN}$NEW_BACKEND_IP${NC}"
+    echo -e "  Port: ${CYAN}$NEW_BACKEND_PORT${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}Is this correct? (Y/n):${NC}"
+    read -r CONFIRM
+    
+    if [[ "$CONFIRM" =~ ^[Nn]$ ]]; then
+        log_error "Configuration cancelled"
         exit 1
     fi
     
