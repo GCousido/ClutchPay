@@ -187,6 +187,350 @@ validate_directory() {
     return 1
 }
 
+
+################################################################################
+# Helper function - Install PostgreSQL
+################################################################################
+install_postgresql() {
+    log_header "Installing PostgreSQL"
+
+    if ! command -v psql &> /dev/null; then
+        log_step "Installing PostgreSQL..."
+        $SUDO_CMD apt-get install -y postgresql postgresql-contrib > /dev/null 2>&1
+        log_success "PostgreSQL installed"
+    else
+        log_success "PostgreSQL already installed"
+    fi
+
+    # Ensure PostgreSQL is running
+    log_step "Starting PostgreSQL service..."
+    $SUDO_CMD systemctl start postgresql
+    $SUDO_CMD systemctl enable postgresql > /dev/null 2>&1
+    log_success "PostgreSQL service started"
+
+    # Configure database
+    log_step "Configuring database..."
+    DB_CONFIGURED=true
+
+    # Check if user already exists
+    if sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" 2>/dev/null | grep -q 1; then
+        log_info "Database user ${DB_USER} already exists"
+    else
+        sudo -u postgres psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';" > /dev/null 2>&1
+        log_success "Database user created"
+    fi
+
+    # Check if database already exists
+    if sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" 2>/dev/null | grep -q 1; then
+        log_info "Database ${DB_NAME} already exists"
+    else
+        sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};" > /dev/null 2>&1
+        log_success "Database created"
+    fi
+
+    # Grant privileges
+    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};" > /dev/null 2>&1
+    log_success "Database configured: ${DB_NAME}"
+}
+
+################################################################################
+# Helper function - Create Backend Systemd Service
+################################################################################
+create_backend_service() {
+    local backend_dir="$1"
+    
+    log_header "Creating Backend Service"
+
+    log_step "Creating systemd service..."
+    $SUDO_CMD tee /etc/systemd/system/clutchpay-backend.service > /dev/null << EOF
+[Unit]
+Description=ClutchPay Backend API
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+WorkingDirectory=$backend_dir
+EnvironmentFile=$backend_dir/.env
+ExecStart=/usr/bin/node $backend_dir/.next/standalone/server.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+Environment=NODE_ENV=production
+Environment=HOSTNAME=0.0.0.0
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    SERVICE_INSTALLED=true
+
+    $SUDO_CMD systemctl daemon-reload
+    $SUDO_CMD systemctl enable clutchpay-backend.service > /dev/null 2>&1
+    $SUDO_CMD systemctl start clutchpay-backend.service
+
+    # Wait for backend to start
+    log_step "Waiting for backend to start..."
+    sleep 5
+
+    if $SUDO_CMD systemctl is-active --quiet clutchpay-backend.service; then
+        log_success "Backend service created and started"
+    else
+        log_warning "Backend service may have issues. Check with: journalctl -u clutchpay-backend -f"
+    fi
+}
+
+################################################################################
+# Helper function - Configure Apache Virtual Host
+################################################################################
+configure_apache_vhost() {
+    local apache_doc_root="$1"
+    local frontend_port="$2"
+    local server_ip="$3"
+    local backend_port="$4"
+    
+    log_header "Configuring Apache Virtual Host"
+
+    APACHE_CONFIGURED=true
+
+    # Update config.js with backend IP and port
+    log_step "Configuring frontend backend connection..."
+    if [ -f "$apache_doc_root/JS/config.js" ]; then
+        $SUDO_CMD sed -i "s|const BACKEND_IP = '.*';|const BACKEND_IP = '${server_ip}';|" "$apache_doc_root/JS/config.js"
+        $SUDO_CMD sed -i "s|const BACKEND_PORT = [0-9]*;|const BACKEND_PORT = ${backend_port};|" "$apache_doc_root/JS/config.js"
+        log_success "Frontend configured to use backend at ${server_ip}:${backend_port}"
+    else
+        log_warning "JS/config.js not found. Skipping frontend configuration."
+    fi
+
+    # Create Apache virtual host configuration
+    log_step "Creating Apache virtual host configuration..."
+
+    # If using non-standard port, add Listen directive
+    if [ "$frontend_port" -ne 80 ]; then
+        # Check if port is already configured in ports.conf
+        if ! grep -q "Listen $frontend_port" /etc/apache2/ports.conf 2>/dev/null; then
+            log_step "Adding Listen $frontend_port to Apache ports.conf..."
+            echo "Listen $frontend_port" | $SUDO_CMD tee -a /etc/apache2/ports.conf > /dev/null
+        fi
+    fi
+
+    $SUDO_CMD tee /etc/apache2/sites-available/clutchpay.conf > /dev/null << EOF
+<VirtualHost *:${frontend_port}>
+    ServerName ${server_ip}
+    ServerAdmin webmaster@localhost
+    DocumentRoot ${apache_doc_root}
+
+    <Directory ${apache_doc_root}>
+        Options -Indexes +FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    ErrorLog \${APACHE_LOG_DIR}/clutchpay-error.log
+    CustomLog \${APACHE_LOG_DIR}/clutchpay-access.log combined
+</VirtualHost>
+EOF
+
+    # Disable default site and enable clutchpay
+    log_step "Enabling ClutchPay site..."
+    $SUDO_CMD a2dissite 000-default.conf > /dev/null 2>&1 || true
+    $SUDO_CMD a2ensite clutchpay.conf > /dev/null 2>&1
+
+    # Test Apache configuration
+    log_step "Testing Apache configuration..."
+    if ! $SUDO_CMD apache2ctl configtest 2>&1 | grep -q "Syntax OK"; then
+        log_error "Apache configuration test failed"
+        cleanup
+        exit 1
+    fi
+
+    # Reload Apache
+    $SUDO_CMD systemctl reload apache2
+    log_success "Apache configured and reloaded"
+}
+
+################################################################################
+# Helper function - Install Apache
+################################################################################
+install_apache() {
+    log_header "Installing Apache"
+
+    if ! command -v apache2 &> /dev/null; then
+        log_step "Installing Apache..."
+        $SUDO_CMD apt-get install -y apache2 > /dev/null 2>&1
+        log_success "Apache installed"
+    else
+        log_success "Apache already installed"
+    fi
+
+    # Enable required modules
+    log_step "Enabling Apache modules..."
+    $SUDO_CMD a2enmod proxy proxy_http rewrite headers > /dev/null 2>&1
+    log_success "Apache modules enabled"
+
+    # Start Apache
+    log_step "Starting Apache service..."
+    $SUDO_CMD systemctl start apache2
+    $SUDO_CMD systemctl enable apache2 > /dev/null 2>&1
+    log_success "Apache service started"
+}
+
+################################################################################
+# Helper function - Install Node.js
+################################################################################
+install_nodejs() {
+    log_header "Installing Node.js"
+
+    # Install Node.js 20.x
+    log_step "Checking Node.js version..."
+    NODE_INSTALLED=false
+    if command -v node &> /dev/null; then
+        NODE_VERSION=$(node --version | cut -d'v' -f2 | cut -d'.' -f1)
+        if [ "$NODE_VERSION" -ge 20 ]; then
+            NODE_INSTALLED=true
+            log_success "Node.js $(node --version) already installed"
+        fi
+    fi
+
+    if [ "$NODE_INSTALLED" = "false" ]; then
+        log_step "Installing Node.js 20.x..."
+        curl -fsSL https://deb.nodesource.com/setup_20.x | $SUDO_CMD bash - > /dev/null 2>&1
+        $SUDO_CMD apt-get install -y nodejs > /dev/null 2>&1
+        log_success "Node.js $(node --version) installed"
+    fi
+
+    # Install pnpm
+    if ! command -v pnpm &> /dev/null; then
+        log_step "Installing pnpm..."
+        if command -v corepack &> /dev/null; then
+            $SUDO_CMD corepack enable > /dev/null 2>&1
+            $SUDO_CMD corepack prepare pnpm@latest --activate > /dev/null 2>&1
+        else
+            $SUDO_CMD npm install -g pnpm > /dev/null 2>&1
+        fi
+        log_success "pnpm installed"
+    else
+        log_success "pnpm already installed"
+    fi
+}
+
+
+################################################################################
+# Helper function - Setup backend specific installation
+################################################################################
+setup_backend_installation() {
+    local backend_dir="$1"
+    local backend_port="$2" 
+    local frontend_ip="$3"
+    local frontend_port="$4"
+
+    log_header "Setting up Backend"
+
+    cd "$backend_dir"
+
+    # Generate secrets
+    log_step "Generating secure secrets..."
+    if ! command -v openssl &> /dev/null; then
+        $SUDO_CMD apt-get install -y openssl > /dev/null 2>&1
+    fi
+
+    JWT_SECRET=$(openssl rand -base64 32)
+    NEXTAUTH_SECRET=$(openssl rand -base64 32)
+
+    # Create .env file
+    log_step "Creating backend .env file..."
+    cat > "$backend_dir/.env" << EOF
+# Database Configuration
+POSTGRES_DB=${DB_NAME}
+POSTGRES_USER=${DB_USER}
+POSTGRES_PASSWORD=${DB_PASSWORD}
+DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}?schema=public"
+
+# Server Configuration
+PORT=${backend_port}
+BACKEND_PORT=${backend_port}
+NODE_ENV=production
+NEXT_PUBLIC_API_URL=http://${SERVER_IP}:${backend_port}
+
+# Authentication
+NEXTAUTH_URL=http://${SERVER_IP}:${backend_port}
+NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+JWT_SECRET=${JWT_SECRET}
+
+# Frontend
+FRONTEND_URL=http://${frontend_ip}:${frontend_port}
+FRONTEND_PORT=${frontend_port}
+SERVER_IP=${frontend_ip}
+
+# Cloudinary Configuration
+NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=clutchpay
+NEXT_PUBLIC_CLOUDINARY_API_KEY=316689144486275
+CLOUDINARY_API_SECRET=7OboPECLxjrFxAsY0C4uFk9ny3A
+EOF
+    log_success "Backend .env created"
+
+    # Build backend
+    log_step "Installing dependencies..."
+    export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+    if ! pnpm install --frozen-lockfile 2>&1; then
+        log_error "Dependency installation failed"
+        cleanup; exit 1
+    fi
+    log_success "Dependencies installed"
+
+    log_step "Generating Prisma Client..."
+    if ! pnpm prisma generate 2>&1; then
+        log_error "Prisma generation failed"
+        cleanup; exit 1
+    fi
+    log_success "Prisma Client generated"
+
+    log_step "Running database migrations..."
+    if ! pnpm prisma migrate deploy 2>&1; then
+        log_error "Database migrations failed"
+        cleanup; exit 1
+    fi
+    log_success "Database migrations completed"
+
+    log_step "Building Next.js application..."
+    export FRONTEND_URL="http://${frontend_ip}:${frontend_port}"
+    if ! pnpm build 2>&1 | tee /tmp/clutchpay-build.log | tail -20; then
+        log_error "Build failed"
+        cleanup; exit 1
+    fi
+
+    if [ ! -f "$backend_dir/.next/standalone/server.js" ]; then
+        log_error "Build completed but server.js not found"
+        cleanup; exit 1
+    fi
+    log_success "Backend built successfully"
+}
+
+################################################################################
+# Helper function - Setup frontend specific installation
+################################################################################
+setup_frontend_installation() {
+    local frontend_dir="$1"
+    local frontend_port="$2"
+    local backend_ip="$3"
+    local backend_port="$4"
+
+    log_header "Setting up Frontend"
+
+    # Copy frontend files to Apache document root
+    APACHE_DOC_ROOT="/var/www/clutchpay"
+    log_step "Copying frontend files to ${APACHE_DOC_ROOT}..."
+    $SUDO_CMD mkdir -p "$APACHE_DOC_ROOT"
+    $SUDO_CMD cp -r "$frontend_dir"/* "$APACHE_DOC_ROOT/"
+    $SUDO_CMD chown -R www-data:www-data "$APACHE_DOC_ROOT"
+    log_success "Frontend files copied"
+
+    # Configure Apache Virtual Host using helper function
+    configure_apache_vhost "$APACHE_DOC_ROOT" "$frontend_port" "$backend_ip" "$backend_port"
+}
+
+
 ################################################################################
 # Common Setup Function - Shared by all installation modes
 ################################################################################
@@ -454,48 +798,8 @@ EOF
     ################################################################################
     # Install PostgreSQL
     ################################################################################
-    log_header "Installing PostgreSQL"
-
-    if ! command -v psql &> /dev/null; then
-        log_step "Installing PostgreSQL..."
-        $SUDO_CMD apt-get install -y postgresql postgresql-contrib > /dev/null 2>&1
-        log_success "PostgreSQL installed"
-    else
-        log_success "PostgreSQL already installed"
-    fi
-
-    $SUDO_CMD systemctl enable postgresql > /dev/null 2>&1
-    $SUDO_CMD systemctl start postgresql
-
-    # Create database and user
-    log_step "Configuring database..."
-    sudo -u postgres psql -c "DROP DATABASE IF EXISTS ${DB_NAME};" > /dev/null 2>&1 || true
-    sudo -u postgres psql -c "DROP USER IF EXISTS ${DB_USER};" > /dev/null 2>&1 || true
-    sudo -u postgres psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';" > /dev/null 2>&1
-    sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};" > /dev/null 2>&1
-    sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};" > /dev/null 2>&1
-    log_success "Database ${DB_NAME} and user ${DB_USER} created"
-    DB_CONFIGURED=true
-
-    ################################################################################
-    # Install Node.js
-    ################################################################################
-    log_header "Installing Node.js"
-
-    if ! command -v node &> /dev/null || ! node --version 2>/dev/null | grep -q "v2[0-9]"; then
-        log_step "Installing Node.js 20.x..."
-        curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - > /dev/null 2>&1
-        $SUDO_CMD apt-get install -y nodejs > /dev/null 2>&1
-        log_success "Node.js $(node --version) installed"
-    else
-        log_success "Node.js $(node --version) already installed"
-    fi
-    NODE_INSTALLED=true
-
-    # Install pnpm
-    log_step "Installing pnpm..."
-    $SUDO_CMD npm install -g pnpm > /dev/null 2>&1
-    log_success "pnpm installed"
+    install_postgresql
+    install_nodejs
 
     ################################################################################
     # Clone Repository
@@ -518,138 +822,12 @@ EOF
     ################################################################################
     # Configure Backend
     ################################################################################
-    log_header "Configuring Backend"
-
-    cd "$BACKEND_DIR"
-
-    log_step "Generating secure secrets..."
-    if ! command -v openssl &> /dev/null; then
-        $SUDO_CMD apt-get install -y openssl > /dev/null 2>&1
-    fi
-
-    JWT_SECRET=$(openssl rand -base64 32)
-    NEXTAUTH_SECRET=$(openssl rand -base64 32)
-
-    log_step "Creating backend .env file..."
-    cat > "$BACKEND_DIR/.env" << EOF
-# Database Configuration
-POSTGRES_DB=${DB_NAME}
-POSTGRES_USER=${DB_USER}
-POSTGRES_PASSWORD=${DB_PASSWORD}
-DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}?schema=public"
-
-# Server Configuration
-BACKEND_PORT=${BACKEND_PORT}
-NODE_ENV=production
-NEXT_PUBLIC_API_URL=http://${SERVER_IP}:${BACKEND_PORT}
-
-# Authentication
-NEXTAUTH_URL=http://${SERVER_IP}:${BACKEND_PORT}
-NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-JWT_SECRET=${JWT_SECRET}
-
-# Frontend (for CORS)
-FRONTEND_URL=http://${FRONTEND_IP}:${FRONTEND_PORT}
-FRONTEND_PORT=${FRONTEND_PORT}
-SERVER_IP=${FRONTEND_IP}
-
-# Cloudinary Configuration
-NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=clutchpay
-NEXT_PUBLIC_CLOUDINARY_API_KEY=316689144486275
-CLOUDINARY_API_SECRET=7OboPECLxjrFxAsY0C4uFk9ny3A
-EOF
-    log_success "Backend .env created"
-
+    setup_backend_installation "$BACKEND_DIR" "$BACKEND_PORT" "$FRONTEND_IP" "$FRONTEND_PORT"
+    
     ################################################################################
-    # Build Backend
+    # Create Systemd Service using helper function
     ################################################################################
-    log_header "Building Backend Application"
-
-    cd "$BACKEND_DIR"
-
-    log_step "Installing dependencies..."
-    export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-    if ! pnpm install --frozen-lockfile 2>&1; then
-        log_error "Dependency installation failed"
-        cleanup
-        exit 1
-    fi
-    log_success "Dependencies installed"
-
-    log_step "Generating Prisma Client..."
-    if ! pnpm prisma generate 2>&1; then
-        log_error "Prisma generation failed"
-        cleanup
-        exit 1
-    fi
-    log_success "Prisma Client generated"
-
-    log_step "Running database migrations..."
-    if ! pnpm prisma migrate deploy 2>&1; then
-        log_error "Database migrations failed"
-        cleanup
-        exit 1
-    fi
-    log_success "Database migrations completed"
-
-    log_step "Building Next.js application..."
-    export FRONTEND_URL="http://${FRONTEND_IP}:${FRONTEND_PORT}"
-    export SERVER_IP="${FRONTEND_IP}"
-
-    if ! pnpm build 2>&1 | tee /tmp/clutchpay-build.log | tail -20; then
-        log_error "Build failed."
-        cleanup
-        exit 1
-    fi
-
-    if [ ! -f "$BACKEND_DIR/.next/standalone/server.js" ]; then
-        log_error "Build completed but server.js not found"
-        cleanup
-        exit 1
-    fi
-    log_success "Backend built successfully"
-
-    ################################################################################
-    # Create Systemd Service
-    ################################################################################
-    log_header "Creating Backend Service"
-
-    log_step "Creating systemd service..."
-    $SUDO_CMD tee /etc/systemd/system/clutchpay-backend.service > /dev/null << EOF
-[Unit]
-Description=ClutchPay Backend API
-After=network.target postgresql.service
-Requires=postgresql.service
-
-[Service]
-Type=simple
-WorkingDirectory=$BACKEND_DIR
-EnvironmentFile=$BACKEND_DIR/.env
-ExecStart=/usr/bin/node $BACKEND_DIR/.next/standalone/server.js
-Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-Environment=NODE_ENV=production
-Environment=HOSTNAME=0.0.0.0
-
-[Install]
-WantedBy=multi-user.target
-EOF
-    SERVICE_INSTALLED=true
-
-    $SUDO_CMD systemctl daemon-reload
-    $SUDO_CMD systemctl enable clutchpay-backend.service > /dev/null 2>&1
-    $SUDO_CMD systemctl start clutchpay-backend.service
-
-    log_step "Waiting for backend to start..."
-    sleep 5
-
-    if $SUDO_CMD systemctl is-active --quiet clutchpay-backend.service; then
-        log_success "Backend service created and started"
-    else
-        log_warning "Backend service may have issues. Check: journalctl -u clutchpay-backend -f"
-    fi
+    create_backend_service "$BACKEND_DIR"
 
     ################################################################################
     # Configure Firewall
@@ -778,20 +956,7 @@ EOF
     ################################################################################
     # Install Apache
     ################################################################################
-    log_header "Installing Apache Web Server"
-
-    if ! command -v apache2 &> /dev/null; then
-        log_step "Installing Apache..."
-        $SUDO_CMD apt-get install -y apache2 > /dev/null 2>&1
-        log_success "Apache installed"
-    else
-        log_success "Apache already installed"
-    fi
-    APACHE_CONFIGURED=true
-
-    $SUDO_CMD a2enmod rewrite > /dev/null 2>&1
-    $SUDO_CMD a2enmod headers > /dev/null 2>&1
-    log_success "Apache modules enabled"
+    install_apache
 
     ################################################################################
     # Clone Repository (frontend only)
@@ -813,57 +978,15 @@ EOF
     $SUDO_CMD mkdir -p "$APACHE_DOC_ROOT"
     $SUDO_CMD cp -r "$TEMP_CLONE/frontend"/* "$APACHE_DOC_ROOT/"
     $SUDO_CMD chown -R www-data:www-data "$APACHE_DOC_ROOT"
-    rm -rf "$TEMP_CLONE"
     log_success "Frontend files copied"
-
-    # Update config.js with backend IP and port
-    log_step "Configuring frontend backend connection..."
-    if [ -f "$APACHE_DOC_ROOT/JS/config.js" ]; then
-        $SUDO_CMD sed -i "s|const BACKEND_IP = '.*';|const BACKEND_IP = '${BACKEND_IP}';|" "$APACHE_DOC_ROOT/JS/config.js"
-        $SUDO_CMD sed -i "s|const BACKEND_PORT = [0-9]*;|const BACKEND_PORT = ${BACKEND_PORT};|" "$APACHE_DOC_ROOT/JS/config.js"
-        log_success "Frontend configured to use backend at ${BACKEND_IP}:${BACKEND_PORT}"
-    else
-        log_warning "JS/config.js not found"
-    fi
-
-    # Create Apache virtual host
-    log_step "Creating Apache virtual host..."
-
-    if [ "$FRONTEND_PORT" -ne 80 ]; then
-        if ! grep -q "Listen $FRONTEND_PORT" /etc/apache2/ports.conf 2>/dev/null; then
-            echo "Listen $FRONTEND_PORT" | $SUDO_CMD tee -a /etc/apache2/ports.conf > /dev/null
-        fi
-    fi
-
-    $SUDO_CMD tee /etc/apache2/sites-available/clutchpay.conf > /dev/null << EOF
-<VirtualHost *:${FRONTEND_PORT}>
-    ServerName ${SERVER_IP}
-    ServerAdmin webmaster@localhost
-    DocumentRoot ${APACHE_DOC_ROOT}
-
-    <Directory ${APACHE_DOC_ROOT}>
-        Options -Indexes +FollowSymLinks
-        AllowOverride All
-        Require all granted
-    </Directory>
-
-    ErrorLog \${APACHE_LOG_DIR}/clutchpay-error.log
-    CustomLog \${APACHE_LOG_DIR}/clutchpay-access.log combined
-</VirtualHost>
-EOF
-
-    $SUDO_CMD a2dissite 000-default.conf > /dev/null 2>&1 || true
-    $SUDO_CMD a2ensite clutchpay.conf > /dev/null 2>&1
-
-    log_step "Testing Apache configuration..."
-    if ! $SUDO_CMD apache2ctl configtest 2>&1 | grep -q "Syntax OK"; then
-        log_error "Apache configuration test failed"
-        exit 1
-    fi
-
-    $SUDO_CMD systemctl enable apache2 > /dev/null 2>&1
-    $SUDO_CMD systemctl reload apache2
-    log_success "Apache configured and reloaded"
+    
+    # Clean up temporary clone directory
+    rm -rf "$TEMP_CLONE"
+    
+    ################################################################################
+    # Configure Apache Virtual Host using helper function
+    ################################################################################
+    configure_apache_vhost "$APACHE_DOC_ROOT" "$FRONTEND_PORT" "$BACKEND_IP" "$BACKEND_PORT"
 
     ################################################################################
     # Configure Firewall
@@ -896,12 +1019,12 @@ EOF
 ################################################################################
 install_clutchpay() {
 
-################################################################################
-# Banner
-################################################################################
-clear
-echo -e "${CYAN}${BOLD}"
-cat << "EOF"
+    ################################################################################
+    # Banner
+    ################################################################################
+    clear
+    echo -e "${CYAN}${BOLD}"
+    cat << "EOF"
    _____ _       _       _     ____
   / ____| |     | |     | |   |  _ \
  | |    | |_   _| |_ ___| |__ | |_) | __ _ _   _
@@ -911,655 +1034,216 @@ cat << "EOF"
                                             __/ |
           Installation Script - Debian 11  |___/
 EOF
-echo -e "${NC}"
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+    echo -e "${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 
-################################################################################
-# Configuration (interactive or default)
-################################################################################
-if [ "$INTERACTIVE_MODE" = true ]; then
-    log_header "Configuration Options"
+    ################################################################################
+    # Configuration (interactive or default)
+    ################################################################################
+    if [ "$INTERACTIVE_MODE" = true ]; then
+        log_header "Configuration Options"
 
-    echo ""
-    echo -e "${CYAN}${BOLD}Please configure the installation settings:${NC}"
-    echo ""
+        echo ""
+        echo -e "${CYAN}${BOLD}Please configure the installation settings:${NC}"
+        echo ""
 
-    # === Installation Directory ===
-    echo -e "${YELLOW}Enter installation directory (default: ${DEFAULT_INSTALL_DIR}):${NC}"
-    read -r USER_INSTALL_DIR
-    INSTALL_DIR="${USER_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
+        # === Installation Directory ===
+        echo -e "${YELLOW}Enter installation directory (default: ${DEFAULT_INSTALL_DIR}):${NC}"
+        read -r USER_INSTALL_DIR
+        INSTALL_DIR="${USER_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
 
-    # Check if directory already exists
-    if [ -d "$INSTALL_DIR" ]; then
-        log_warning "Directory $INSTALL_DIR already exists!"
-        echo -n "  Do you want to overwrite it? (y/N): "
-        read -r OVERWRITE_DIR
-        if [[ ! "$OVERWRITE_DIR" =~ ^[Yy]$ ]]; then
-            log_error "Installation cancelled. Please choose a different directory."
-            exit 1
-        fi
-    fi
-
-    BACKEND_DIR="$INSTALL_DIR/$BACKEND_SUBDIR"
-    FRONTEND_DIR="$INSTALL_DIR/frontend"
-    log_success "Installation directory: $INSTALL_DIR"
-
-    echo ""
-
-    # === Backend Port ===
-    while true; do
-        echo -e "${YELLOW}Enter backend port (default: $DEFAULT_BACKEND_PORT):${NC}"
-        read -r USER_BACKEND_PORT
-        BACKEND_PORT="${USER_BACKEND_PORT:-$DEFAULT_BACKEND_PORT}"
-        
-        if validate_port "$BACKEND_PORT"; then
-            if check_port "$BACKEND_PORT"; then
-                log_warning "Port $BACKEND_PORT is currently in use!"
-            else
-                break
+        # Check if directory already exists
+        if [ -d "$INSTALL_DIR" ]; then
+            log_warning "Directory $INSTALL_DIR already exists!"
+            echo -n "  Do you want to overwrite it? (y/N): "
+            read -r OVERWRITE_DIR
+            if [[ ! "$OVERWRITE_DIR" =~ ^[Yy]$ ]]; then
+                log_error "Installation cancelled. Please choose a different directory."
+                exit 1
             fi
-        else
-            log_error "Invalid port number: $BACKEND_PORT"
         fi
-    done
-    log_success "Backend port: $BACKEND_PORT"
 
-    echo ""
+        BACKEND_DIR="$INSTALL_DIR/$BACKEND_SUBDIR"
+        FRONTEND_DIR="$INSTALL_DIR/frontend"
+        log_success "Installation directory: $INSTALL_DIR"
 
-    # === Frontend Port (Apache) ===
-    while true; do
-        echo -e "${YELLOW}Enter frontend port (default: $DEFAULT_FRONTEND_PORT):${NC}"
-        read -r USER_FRONTEND_PORT
-        FRONTEND_PORT="${USER_FRONTEND_PORT:-$DEFAULT_FRONTEND_PORT}"
-        
-        if validate_port "$FRONTEND_PORT"; then
-            if check_port "$FRONTEND_PORT"; then
-                log_warning "Port $FRONTEND_PORT is currently in use!"
+        echo ""
+
+        # === Backend Port ===
+        while true; do
+            echo -e "${YELLOW}Enter backend port (default: $DEFAULT_BACKEND_PORT):${NC}"
+            read -r USER_BACKEND_PORT
+            BACKEND_PORT="${USER_BACKEND_PORT:-$DEFAULT_BACKEND_PORT}"
+            
+            if validate_port "$BACKEND_PORT"; then
+                if check_port "$BACKEND_PORT"; then
+                    log_warning "Port $BACKEND_PORT is currently in use!"
+                else
+                    break
+                fi
             else
-                break
+                log_error "Invalid port number: $BACKEND_PORT"
             fi
-        else
-            log_error "Invalid port number: $FRONTEND_PORT"
+        done
+        log_success "Backend port: $BACKEND_PORT"
+
+        echo ""
+
+        # === Frontend Port (Apache) ===
+        while true; do
+            echo -e "${YELLOW}Enter frontend port (default: $DEFAULT_FRONTEND_PORT):${NC}"
+            read -r USER_FRONTEND_PORT
+            FRONTEND_PORT="${USER_FRONTEND_PORT:-$DEFAULT_FRONTEND_PORT}"
+            
+            if validate_port "$FRONTEND_PORT"; then
+                if check_port "$FRONTEND_PORT"; then
+                    log_warning "Port $FRONTEND_PORT is currently in use!"
+                else
+                    break
+                fi
+            else
+                log_error "Invalid port number: $FRONTEND_PORT"
+            fi
+        done
+        log_success "Frontend port: $FRONTEND_PORT"
+
+        echo ""
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${GREEN}${BOLD}Configuration Summary:${NC}"
+        echo -e "  Installation directory: ${CYAN}$INSTALL_DIR${NC}"
+        echo -e "  Backend port:          ${CYAN}$BACKEND_PORT${NC}"
+        echo -e "  Frontend port:         ${CYAN}$FRONTEND_PORT${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+    else
+        # Non-interactive mode: use defaults
+        INSTALL_DIR="$DEFAULT_INSTALL_DIR"
+        BACKEND_PORT="$DEFAULT_BACKEND_PORT"
+        FRONTEND_PORT="$DEFAULT_FRONTEND_PORT"
+        BACKEND_DIR="$INSTALL_DIR/$BACKEND_SUBDIR"
+        FRONTEND_DIR="$INSTALL_DIR/frontend"
+
+        # Check if directory already exists
+        if [ -d "$INSTALL_DIR" ]; then
+            log_warning "Directory $INSTALL_DIR already exists!"
+            echo -n "  Do you want to overwrite it? (y/N): "
+            read -r OVERWRITE_DIR
+            if [[ ! "$OVERWRITE_DIR" =~ ^[Yy]$ ]]; then
+                log_error "Installation cancelled. Please choose a different directory."
+                exit 1
+            fi
         fi
-    done
-    log_success "Frontend port: $FRONTEND_PORT"
+        
+        log_info "Using default configuration:"
+        log_info "  Installation directory: $INSTALL_DIR"
+        log_info "  Backend port:          $BACKEND_PORT"
+        log_info "  Frontend port:         $FRONTEND_PORT"
+        echo ""
+    fi
 
-    echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${GREEN}${BOLD}Configuration Summary:${NC}"
-    echo -e "  Installation directory: ${CYAN}$INSTALL_DIR${NC}"
-    echo -e "  Backend port:          ${CYAN}$BACKEND_PORT${NC}"
-    echo -e "  Frontend port:         ${CYAN}$FRONTEND_PORT${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-else
-    # Non-interactive mode: use defaults
-    INSTALL_DIR="$DEFAULT_INSTALL_DIR"
-    BACKEND_PORT="$DEFAULT_BACKEND_PORT"
-    FRONTEND_PORT="$DEFAULT_FRONTEND_PORT"
-    BACKEND_DIR="$INSTALL_DIR/$BACKEND_SUBDIR"
-    FRONTEND_DIR="$INSTALL_DIR/frontend"
+    # Use common setup function instead of duplicating code
+    common_setup "full"
 
-    # Check if directory already exists
+    ################################################################################
+    # Install all components using helper functions
+    ################################################################################
+    install_postgresql
+    install_apache  
+    install_nodejs
+
+    ################################################################################
+    # Clone Repository
+    ################################################################################
+    log_header "Downloading ClutchPay"
+
     if [ -d "$INSTALL_DIR" ]; then
-        log_warning "Directory $INSTALL_DIR already exists!"
-        echo -n "  Do you want to overwrite it? (y/N): "
-        read -r OVERWRITE_DIR
-        if [[ ! "$OVERWRITE_DIR" =~ ^[Yy]$ ]]; then
-            log_error "Installation cancelled. Please choose a different directory."
-            exit 1
-        fi
+        log_warning "Installation directory exists. Backing up..."
+        $SUDO_CMD mv "$INSTALL_DIR" "${INSTALL_DIR}.backup.$(date +%s)"
     fi
-    
-    log_info "Using default configuration:"
-    log_info "  Installation directory: $INSTALL_DIR"
-    log_info "  Backend port:          $BACKEND_PORT"
-    log_info "  Frontend port:         $FRONTEND_PORT"
-    echo ""
-fi
 
-################################################################################
-# Check sudo availability
-################################################################################
-log_header "Checking Privileges"
+    log_step "Cloning from GitHub (tag: $REPO_TAG)..."
+    $SUDO_CMD git clone --branch "$REPO_TAG" --depth 1 "$REPO_URL" "$INSTALL_DIR" > /dev/null 2>&1 || { log_error "Git clone failed"; exit 1; }
+    REPO_CLONED=true
+    log_success "Repository cloned to $INSTALL_DIR"
 
-if [ "$EUID" -eq 0 ]; then
-    # Running as root
-    SUDO_CMD=""
-    log_success "Running as root"
-elif command -v sudo &> /dev/null; then
-    # sudo exists, check if we can use it without password
-    if sudo -n true 2>/dev/null; then
-        SUDO_CMD="sudo"
-        log_success "sudo privileges already cached"
-    else
-        # Need to ask for sudo password
-        log_info "This installation requires administrative privileges."
-        echo -e "${YELLOW}Please enter your sudo password:${NC}"
-        if ! sudo -v; then
-            log_error "Failed to obtain sudo privileges"
-            exit 1
-        fi
-        SUDO_CMD="sudo"
-        log_success "sudo privileges obtained"
+    # Set proper ownership if not running as root
+    if [ "$IS_ROOT" = false ]; then
+        log_step "Setting proper ownership..."
+        $SUDO_CMD chown -R $USER:$USER "$INSTALL_DIR"
     fi
-else
-    # sudo doesn't exist
-    log_error "sudo is not installed and you are not root"
-    log_info "Please install sudo with: ${CYAN}su -c 'apt-get update && apt-get install -y sudo'${NC}"
-    log_info "Then add your user to sudo group: ${CYAN}su -c 'usermod -aG sudo $USER'${NC}"
-    log_info "After that, log out and log back in, then run this script again."
-    exit 1
-fi
 
-################################################################################
-# Ensure basic system tools are available
-################################################################################
-log_header "Verifying Essential Tools"
-
-# Check and install basic tools that might be missing
-ESSENTIAL_TOOLS_MISSING=false
-
-# Check for dpkg (should always be present, but verify)
-if ! command -v dpkg &> /dev/null; then
-    log_error "dpkg not found. This script requires a Debian-based system."
-    exit 1
-fi
-
-# Check for tee (used for creating systemd service)
-if ! command -v tee &> /dev/null; then
-    log_step "Installing coreutils (includes tee)..."
-    $SUDO_CMD apt-get update -qq
-    $SUDO_CMD apt-get install -y coreutils > /dev/null 2>&1
-    log_success "coreutils installed"
-fi
-
-# Check for sed (used for frontend configuration)
-if ! command -v sed &> /dev/null; then
-    log_step "Installing sed..."
-    $SUDO_CMD apt-get install -y sed > /dev/null 2>&1
-    log_success "sed installed"
-fi
-
-# Check for grep (used throughout the script)
-if ! command -v grep &> /dev/null; then
-    log_step "Installing grep..."
-    $SUDO_CMD apt-get install -y grep > /dev/null 2>&1
-    log_success "grep installed"
-fi
-
-# Check for systemctl (systemd)
-if ! command -v systemctl &> /dev/null; then
-    log_error "systemctl not found. This script requires systemd."
-    exit 1
-fi
-
-log_success "All essential system tools are available"
-
-################################################################################
-# Check System
-################################################################################
-log_header "Checking System Requirements"
-
-# Check Debian
-if [ ! -f /etc/debian_version ]; then
-    log_error "This script requires Debian 11"
-    exit 1
-fi
-
-log_success "Running on Debian $(cat /etc/debian_version)"
-
-################################################################################
-# Install Dependencies
-################################################################################
-log_header "Installing System Dependencies"
-
-# Update package list
-log_step "Updating package lists..."
-$SUDO_CMD apt-get update -qq
-
-# Install curl
-if ! command -v curl &> /dev/null; then
-    log_step "Installing curl..."
-    $SUDO_CMD apt-get install -y curl > /dev/null 2>&1
-    log_success "curl installed"
-else
-    log_success "curl already installed"
-fi
-
-# Install Git
-if ! command -v git &> /dev/null; then
-    log_step "Installing Git..."
-    $SUDO_CMD apt-get install -y git > /dev/null 2>&1
-    log_success "Git installed"
-else
-    log_success "Git already installed"
-fi
-
-################################################################################
-# Detect Server IP Address
-################################################################################
-log_header "Detecting Server IP Address"
-
-# Get the primary IP address (not 127.0.0.1)
-SERVER_IP=$(hostname -I | awk '{print $1}')
-
-if [ -z "$SERVER_IP" ]; then
-    log_warning "Could not auto-detect IP address"
-    echo -e "${YELLOW}Please enter the server IP address:${NC}"
-    read -r SERVER_IP
-fi
-
-log_success "Server IP detected: $SERVER_IP"
-
-################################################################################
-# Install PostgreSQL
-################################################################################
-log_header "Installing PostgreSQL (Native)"
-
-if ! command -v psql &> /dev/null; then
-    log_step "Installing PostgreSQL..."
-    $SUDO_CMD apt-get install -y postgresql postgresql-contrib > /dev/null 2>&1
-    log_success "PostgreSQL installed"
-else
-    log_success "PostgreSQL already installed"
-fi
-
-# Ensure PostgreSQL is running
-log_step "Starting PostgreSQL service..."
-$SUDO_CMD systemctl start postgresql
-$SUDO_CMD systemctl enable postgresql > /dev/null 2>&1
-log_success "PostgreSQL service started"
-
-# Configure database
-log_step "Configuring database..."
-DB_CONFIGURED=true
-
-# Check if user already exists
-if sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" 2>/dev/null | grep -q 1; then
-    log_info "Database user ${DB_USER} already exists"
-else
-    sudo -u postgres psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';" > /dev/null 2>&1
-    log_success "Database user created"
-fi
-
-# Check if database already exists
-if sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" 2>/dev/null | grep -q 1; then
-    log_info "Database ${DB_NAME} already exists"
-else
-    sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};" > /dev/null 2>&1
-    log_success "Database created"
-fi
-
-# Grant privileges
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};" > /dev/null 2>&1
-log_success "Database configured: ${DB_NAME}"
-
-################################################################################
-# Install Apache
-################################################################################
-log_header "Installing Apache (Native)"
-
-if ! command -v apache2 &> /dev/null; then
-    log_step "Installing Apache..."
-    $SUDO_CMD apt-get install -y apache2 > /dev/null 2>&1
-    log_success "Apache installed"
-else
-    log_success "Apache already installed"
-fi
-
-# Enable required modules
-log_step "Enabling Apache modules..."
-$SUDO_CMD a2enmod proxy proxy_http rewrite headers > /dev/null 2>&1
-log_success "Apache modules enabled"
-
-# Start Apache
-log_step "Starting Apache service..."
-$SUDO_CMD systemctl start apache2
-$SUDO_CMD systemctl enable apache2 > /dev/null 2>&1
-log_success "Apache service started"
-
-################################################################################
-log_header "Installing Node.js"
-
-# Install Node.js 20.x
-log_step "Checking Node.js version..."
-NODE_INSTALLED=false
-if command -v node &> /dev/null; then
-    NODE_VERSION=$(node --version | cut -d'v' -f2 | cut -d'.' -f1)
-    if [ "$NODE_VERSION" -ge 20 ]; then
-        NODE_INSTALLED=true
-        log_success "Node.js $(node --version) already installed"
+    # Validate expected directories
+    if [ ! -d "$BACKEND_DIR" ]; then
+        log_error "Backend directory '$BACKEND_SUBDIR' not found inside repository. Aborting to avoid creating an empty backend."; cleanup; exit 1;
     fi
-fi
-
-if [ "$NODE_INSTALLED" = "false" ]; then
-    log_step "Installing Node.js 20.x..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | $SUDO_CMD bash - > /dev/null 2>&1
-    $SUDO_CMD apt-get install -y nodejs > /dev/null 2>&1
-    log_success "Node.js $(node --version) installed"
-fi
-
-# Install pnpm
-if ! command -v pnpm &> /dev/null; then
-    log_step "Installing pnpm..."
-    if command -v corepack &> /dev/null; then
-        $SUDO_CMD corepack enable > /dev/null 2>&1
-        $SUDO_CMD corepack prepare pnpm@latest --activate > /dev/null 2>&1
-    else
-        $SUDO_CMD npm install -g pnpm > /dev/null 2>&1
+    if [ ! -d "$FRONTEND_DIR" ]; then
+        log_error "Frontend directory 'frontend' not found inside repository. Aborting."; cleanup; exit 1;
     fi
-    log_success "pnpm installed"
-else
-    log_success "pnpm already installed"
-fi
+    log_success "Verified backend and frontend directories exist"
 
-################################################################################
-# Clone Repository
-################################################################################
-# Clone Repository
-################################################################################
-log_header "Downloading ClutchPay"
+    ################################################################################
+    # Configure Backend
+    ################################################################################
+    setup_backend_installation "$BACKEND_DIR" "$BACKEND_PORT" "$SERVER_IP" "$FRONTEND_PORT"
+    setup_frontend_installation "$FRONTEND_DIR" "$FRONTEND_PORT" "$SERVER_IP" "$BACKEND_PORT"
 
-if [ -d "$INSTALL_DIR" ]; then
-    log_warning "Installation directory exists. Backing up..."
-    $SUDO_CMD mv "$INSTALL_DIR" "${INSTALL_DIR}.backup.$(date +%s)"
-fi
+    ################################################################################
+    # Create Systemd Service for Backend
+    ################################################################################
+    create_backend_service "$BACKEND_DIR"
 
-log_step "Cloning from GitHub (tag: $REPO_TAG)..."
-$SUDO_CMD git clone --branch "$REPO_TAG" --depth 1 "$REPO_URL" "$INSTALL_DIR" > /dev/null 2>&1 || { log_error "Git clone failed"; exit 1; }
-REPO_CLONED=true
-log_success "Repository cloned to $INSTALL_DIR"
-
-# Set proper ownership if not running as root
-if [ "$IS_ROOT" = false ]; then
-    log_step "Setting proper ownership..."
-    $SUDO_CMD chown -R $USER:$USER "$INSTALL_DIR"
-fi
-
-# Validate expected directories
-if [ ! -d "$BACKEND_DIR" ]; then
-    log_error "Backend directory '$BACKEND_SUBDIR' not found inside repository. Aborting to avoid creating an empty backend."; cleanup; exit 1;
-fi
-if [ ! -d "$FRONTEND_DIR" ]; then
-    log_error "Frontend directory 'frontend' not found inside repository. Aborting."; cleanup; exit 1;
-fi
-log_success "Verified backend and frontend directories exist"
-
-################################################################################
-# Configure Backend
-################################################################################
-log_header "Configuring Backend"
-
-cd "$BACKEND_DIR"
-
-# Generate secrets
-log_step "Generating secure secrets..."
-# Check if openssl is available
-if ! command -v openssl &> /dev/null; then
-    log_step "Installing openssl..."
-    $SUDO_CMD apt-get install -y openssl > /dev/null 2>&1
-fi
-
-JWT_SECRET=$(openssl rand -base64 32)
-NEXTAUTH_SECRET=$(openssl rand -base64 32)
-
-# Create .env file
-log_step "Creating backend .env file..."
-cat > "$BACKEND_DIR/.env" << EOF
-# Database Configuration
-POSTGRES_DB=${DB_NAME}
-POSTGRES_USER=${DB_USER}
-POSTGRES_PASSWORD=${DB_PASSWORD}
-DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}?schema=public"
-
-# Server Configuration
-BACKEND_PORT=${BACKEND_PORT}
-NODE_ENV=production
-NEXT_PUBLIC_API_URL=http://${SERVER_IP}:${BACKEND_PORT}
-
-# Authentication - Using SERVER_IP for external access
-NEXTAUTH_URL=http://${SERVER_IP}:${BACKEND_PORT}
-NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-JWT_SECRET=${JWT_SECRET}
-
-# Frontend
-FRONTEND_URL=http://${SERVER_IP}:${FRONTEND_PORT}
-FRONTEND_PORT=${FRONTEND_PORT}
-SERVER_IP=${SERVER_IP}
-EOF
-
-log_success "Backend .env created"
-
-################################################################################
-# Build Backend
-################################################################################
-log_header "Building Backend Application"
-
-cd "$BACKEND_DIR"
-
-log_step "Installing dependencies ..."
-# Disable interactive prompts for corepack
-export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-if ! pnpm install --frozen-lockfile 2>&1; then
-    log_error "Dependency installation failed"
-    cleanup
-    exit 1
-fi
-log_success "Dependencies installed"
-
-log_step "Generating Prisma Client..."
-if ! pnpm prisma generate 2>&1; then
-    log_error "Prisma generation failed"
-    cleanup
-    exit 1
-fi
-log_success "Prisma Client generated"
-
-log_step "Running database migrations..."
-echo -e "${BLUE}Applying migrations...${NC}\n"
-if ! pnpm prisma migrate deploy 2>&1; then
-    log_error "Database migrations failed"
-    cleanup
-    exit 1
-fi
-log_success "Database migrations completed"
-
-log_step "Building Next.js application..."
-# Set environment variables for build
-export FRONTEND_URL="http://${SERVER_IP}:${FRONTEND_PORT}"
-export SERVER_IP="${SERVER_IP}"
-
-if ! pnpm build 2>&1 | tee /tmp/clutchpay-build.log | tail -20; then
-    log_error "Build failed. Last 20 lines of output shown above."
-    log_error "Full build log saved to: /tmp/clutchpay-build.log"
-    cleanup
-    exit 1
-fi
-
-if [ ! -f "$BACKEND_DIR/.next/standalone/server.js" ]; then
-    log_error "Build completed but server.js not found in .next/standalone/"
-    log_error "This may indicate output:'standalone' is missing in next.config.ts"
-    cleanup
-    exit 1
-fi
-
-log_success "Backend built successfully"
-
-################################################################################
-# Configure Frontend
-################################################################################
-log_header "Configuring Frontend"
-
-cd "$FRONTEND_DIR"
-
-################################################################################
-# Configure Apache Virtual Host
-################################################################################
-log_header "Configuring Apache Virtual Host"
-
-APACHE_CONFIGURED=true
-
-# Copy frontend files to Apache document root
-APACHE_DOC_ROOT="/var/www/clutchpay"
-log_step "Copying frontend files to ${APACHE_DOC_ROOT}..."
-$SUDO_CMD mkdir -p "$APACHE_DOC_ROOT"
-$SUDO_CMD cp -r "$FRONTEND_DIR"/* "$APACHE_DOC_ROOT/"
-$SUDO_CMD chown -R www-data:www-data "$APACHE_DOC_ROOT"
-log_success "Frontend files copied"
-
-# Update config.js with backend IP and port
-log_step "Configuring frontend backend connection..."
-if [ -f "$APACHE_DOC_ROOT/JS/config.js" ]; then
-    $SUDO_CMD sed -i "s|const BACKEND_IP = '.*';|const BACKEND_IP = '${SERVER_IP}';|" "$APACHE_DOC_ROOT/JS/config.js"
-    $SUDO_CMD sed -i "s|const BACKEND_PORT = [0-9]*;|const BACKEND_PORT = ${BACKEND_PORT};|" "$APACHE_DOC_ROOT/JS/config.js"
-    log_success "Frontend configured to use backend at ${SERVER_IP}:${BACKEND_PORT}"
-else
-    log_warning "JS/config.js not found. Skipping frontend configuration."
-fi
-
-# Create Apache virtual host configuration
-log_step "Creating Apache virtual host configuration..."
-
-# If using non-standard port, add Listen directive
-if [ "$FRONTEND_PORT" -ne 80 ]; then
-    # Check if port is already configured in ports.conf
-    if ! grep -q "Listen $FRONTEND_PORT" /etc/apache2/ports.conf 2>/dev/null; then
-        log_step "Adding Listen directive for port $FRONTEND_PORT..."
-        echo "Listen $FRONTEND_PORT" | $SUDO_CMD tee -a /etc/apache2/ports.conf > /dev/null
+    ################################################################################
+    # Configure Firewall (if ufw is installed)
+    ################################################################################
+    if command -v ufw &> /dev/null; then
+        log_header "Configuring Firewall"
+        
+        log_step "Opening ports $FRONTEND_PORT and ${BACKEND_PORT}..."
+        $SUDO_CMD ufw allow $FRONTEND_PORT/tcp > /dev/null 2>&1 || true
+        $SUDO_CMD ufw allow ${BACKEND_PORT}/tcp > /dev/null 2>&1 || true
+        log_success "Firewall rules added"
     fi
-fi
 
-$SUDO_CMD tee /etc/apache2/sites-available/clutchpay.conf > /dev/null << EOF
-<VirtualHost *:${FRONTEND_PORT}>
-    ServerName ${SERVER_IP}
-    ServerAdmin webmaster@localhost
-    DocumentRoot ${APACHE_DOC_ROOT}
+    ################################################################################
+    # Installation Complete
+    ################################################################################
+    SUCCESS=true
+    log_header "Installation Complete! 🎉"
 
-    <Directory ${APACHE_DOC_ROOT}>
-        Options -Indexes +FollowSymLinks
-        AllowOverride All
-        Require all granted
-    </Directory>
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}${BOLD}  ClutchPay has been successfully installed!${NC}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 
-    ErrorLog \${APACHE_LOG_DIR}/clutchpay-error.log
-    CustomLog \${APACHE_LOG_DIR}/clutchpay-access.log combined
-</VirtualHost>
-EOF
+    echo -e "${CYAN}📂 Installation Directory:${NC}"
+    echo -e "   ${INSTALL_DIR}\n"
 
-# Disable default site and enable clutchpay
-log_step "Enabling ClutchPay site..."
-$SUDO_CMD a2dissite 000-default.conf > /dev/null 2>&1 || true
-$SUDO_CMD a2ensite clutchpay.conf > /dev/null 2>&1
+    echo -e "${CYAN}🌐 Access URLs:${NC}"
+    echo -e "   Frontend: ${GREEN}http://${SERVER_IP}:${FRONTEND_PORT}${NC}"
+    echo -e "   Backend:  ${GREEN}http://${SERVER_IP}:${BACKEND_PORT}${NC}\n"
 
-# Test Apache configuration
-log_step "Testing Apache configuration..."
-if ! $SUDO_CMD apache2ctl configtest 2>&1 | grep -q "Syntax OK"; then
-    log_error "Apache configuration test failed"
-    cleanup
-    exit 1
-fi
+    echo -e "${CYAN}🗄️  Database:${NC}"
+    echo -e "   Type:     PostgreSQL"
+    echo -e "   Port:     5432"
+    echo -e "   Database: ${DB_NAME}"
+    echo -e "   User:     ${DB_USER}\n"
 
-# Reload Apache
-$SUDO_CMD systemctl reload apache2
-log_success "Apache configured and reloaded"
+    echo -e "${CYAN}🔧 Service Management:${NC}"
+    echo -e "   ${YELLOW}Backend:${NC}"
+    echo -e "     systemctl status clutchpay-backend"
+    echo -e "     systemctl restart clutchpay-backend"
+    echo -e "     journalctl -u clutchpay-backend -f"
+    echo -e ""
+    echo -e "   ${YELLOW}Apache (Frontend):${NC}"
+    echo -e "     systemctl status apache2"
+    echo -e "     systemctl restart apache2"
+    echo -e ""
+    echo -e "   ${YELLOW}PostgreSQL:${NC}"
+    echo -e "     systemctl status postgresql"
+    echo -e "     systemctl restart postgresql\n"
 
-################################################################################
-# Create Systemd Service for Backend
-################################################################################
-log_header "Creating Backend Service"
-
-log_step "Creating systemd service..."
-$SUDO_CMD tee /etc/systemd/system/clutchpay-backend.service > /dev/null << EOF
-[Unit]
-Description=ClutchPay Backend API
-After=network.target postgresql.service
-Requires=postgresql.service
-
-[Service]
-Type=simple
-WorkingDirectory=$BACKEND_DIR
-EnvironmentFile=$BACKEND_DIR/.env
-ExecStart=/usr/bin/node $BACKEND_DIR/.next/standalone/server.js
-Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-Environment=NODE_ENV=production
-Environment=HOSTNAME=0.0.0.0
-
-[Install]
-WantedBy=multi-user.target
-EOF
-SERVICE_INSTALLED=true
-
-$SUDO_CMD systemctl daemon-reload
-$SUDO_CMD systemctl enable clutchpay-backend.service > /dev/null 2>&1
-$SUDO_CMD systemctl start clutchpay-backend.service
-
-# Wait for backend to start
-log_step "Waiting for backend to start..."
-sleep 5
-
-if $SUDO_CMD systemctl is-active --quiet clutchpay-backend.service; then
-    log_success "Backend service created and started"
-else
-    log_warning "Backend service may have issues. Check with: journalctl -u clutchpay-backend -f"
-fi
-
-################################################################################
-# Configure Firewall (if ufw is installed)
-################################################################################
-if command -v ufw &> /dev/null; then
-    log_header "Configuring Firewall"
-    
-    log_step "Opening ports 80 and ${BACKEND_PORT}..."
-    $SUDO_CMD ufw allow 80/tcp > /dev/null 2>&1 || true
-    $SUDO_CMD ufw allow ${BACKEND_PORT}/tcp > /dev/null 2>&1 || true
-    log_success "Firewall rules added"
-fi
-
-################################################################################
-# Installation Complete
-################################################################################
-SUCCESS=true
-log_header "Installation Complete! 🎉"
-
-echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${GREEN}${BOLD}  ClutchPay has been successfully installed!${NC}"
-echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
-
-echo -e "${CYAN}📂 Installation Directory:${NC}"
-echo -e "   ${INSTALL_DIR}\n"
-
-echo -e "${CYAN}🌐 Access URLs:${NC}"
-echo -e "   Frontend: ${GREEN}http://${SERVER_IP}:${FRONTEND_PORT}${NC}"
-echo -e "   Backend:  ${GREEN}http://${SERVER_IP}:${BACKEND_PORT}${NC}\n"
-
-echo -e "${CYAN}🗄️  Database:${NC}"
-echo -e "   Type:     PostgreSQL"
-echo -e "   Port:     5432"
-echo -e "   Database: ${DB_NAME}"
-echo -e "   User:     ${DB_USER}\n"
-
-echo -e "${CYAN}🔧 Service Management:${NC}"
-echo -e "   ${YELLOW}Backend:${NC}"
-echo -e "     systemctl status clutchpay-backend"
-echo -e "     systemctl restart clutchpay-backend"
-echo -e "     journalctl -u clutchpay-backend -f"
-echo -e ""
-echo -e "   ${YELLOW}Apache (Frontend):${NC}"
-echo -e "     systemctl status apache2"
-echo -e "     systemctl restart apache2"
-echo -e ""
-echo -e "   ${YELLOW}PostgreSQL:${NC}"
-echo -e "     systemctl status postgresql"
-echo -e "     systemctl restart postgresql\n"
-
-echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${GREEN}  Thank you for installing ClutchPay!${NC}"
-echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
-
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}  Thank you for installing ClutchPay!${NC}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 }
 
 ################################################################################
@@ -1704,6 +1388,11 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
         
         if ! grep -q "^DATABASE_URL=" "$BACKEND_DIR/.env"; then
             echo "DATABASE_URL=\"postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}?schema=public\"" >> "$BACKEND_DIR/.env"
+            ADDED_VARS=true
+        fi
+
+        if ! grep -q "^PORT=" "$BACKEND_DIR/.env"; then
+            echo "PORT=${DEFAULT_BACKEND_PORT}" >> "$BACKEND_DIR/.env"
             ADDED_VARS=true
         fi
         
