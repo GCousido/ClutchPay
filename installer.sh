@@ -140,7 +140,7 @@ DEFAULT_FRONTEND_PORT=80
 
 # Repository Configuration
 REPO_URL="https://github.com/GCousido/ClutchPay.git"
-REPO_TAG="main"
+REPO_TAG="segunda-entrega"
 
 # Database credentials (from .env defaults)
 DB_NAME="clutchpay_db"
