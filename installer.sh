@@ -187,6 +187,32 @@ validate_directory() {
     return 1
 }
 
+################################################################################
+# Helper function - Clone Repository with Proper Permissions
+################################################################################
+clone_repository_with_permissions() {
+    local source_url="$1"
+    local target_dir="$2"
+    local git_tag="$3"
+    
+    log_step "Cloning ClutchPay repository (tag: $git_tag)..."
+    
+    # Remove and recreate directory with proper permissions
+    if [ "$IS_ROOT" = false ]; then
+        $SUDO_CMD rm -rf "$target_dir" 2>/dev/null || true
+        $SUDO_CMD mkdir -p "$target_dir"
+        $SUDO_CMD git clone --depth 1 --branch "$git_tag" "$source_url" "$target_dir" 2>&1 | tail -3
+        $SUDO_CMD chown -R $USER:$USER "$target_dir"
+    else
+        rm -rf "$target_dir" 2>/dev/null || true
+        mkdir -p "$target_dir"
+        git clone --depth 1 --branch "$git_tag" "$source_url" "$target_dir" 2>&1 | tail -3
+    fi
+    
+    REPO_CLONED=true
+    log_success "Repository cloned to $target_dir"
+}
+
 
 ################################################################################
 # Helper function - Install PostgreSQL
@@ -774,24 +800,40 @@ EOF
 
     # Frontend location (for CORS configuration)
     echo ""
-    echo -e "${YELLOW}Enter the FRONTEND server IP (default: ${SERVER_IP}):${NC}"
-    read -r USER_FRONTEND_IP
-    FRONTEND_IP="${USER_FRONTEND_IP:-$SERVER_IP}"
+    FRONTEND_IP="$SERVER_IP"
     
-    # Validate frontend IP
-    while ! validate_ip "$FRONTEND_IP"; do
-        log_error "Invalid IP address format: $FRONTEND_IP"
-        echo -e "${YELLOW}Please enter a valid FRONTEND server IP:${NC}"
-        read -r FRONTEND_IP
-    done
+    if [ "$INTERACTIVE_MODE" = true ]; then
+        while true; do
+            echo -e "${YELLOW}Enter the FRONTEND server IP (default: ${FRONTEND_IP}):${NC}"
+            read -r USER_FRONTEND_IP
+            FRONTEND_IP="${USER_FRONTEND_IP:-$SERVER_IP}"
+            
+            # Validate frontend IP
+            if validate_ip "$FRONTEND_IP"; then
+                break
+            else
+                log_error "Invalid IP address format: $FRONTEND_IP"
+            fi
+        done
+    else
+        log_info "Using server IP as frontend IP: $FRONTEND_IP"
+    fi
     
-    echo -e "${YELLOW}Enter the FRONTEND port (default: 80):${NC}"
-    read -r USER_FRONTEND_PORT
-    FRONTEND_PORT="${USER_FRONTEND_PORT:-80}"
-    
-    if ! validate_port "$FRONTEND_PORT"; then
-        log_error "Invalid port number: $FRONTEND_PORT"
-        exit 1
+    FRONTEND_PORT="80"
+    if [ "$INTERACTIVE_MODE" = true ]; then
+        while true; do
+            echo -e "${YELLOW}Enter the FRONTEND port (default: 80):${NC}"
+            read -r USER_FRONTEND_PORT
+            FRONTEND_PORT="${USER_FRONTEND_PORT:-80}"
+            
+            if validate_port "$FRONTEND_PORT"; then
+                break
+            else
+                log_error "Invalid port number: $FRONTEND_PORT"
+            fi
+        done
+    else
+        log_info "Using default frontend port: $FRONTEND_PORT"
     fi
     log_success "Frontend location: ${FRONTEND_IP}:${FRONTEND_PORT}"
 
@@ -806,12 +848,7 @@ EOF
     ################################################################################
     log_header "Cloning Repository"
 
-    log_step "Cloning ClutchPay repository (tag: $REPO_TAG)..."
-    rm -rf "$INSTALL_DIR" 2>/dev/null || true
-    mkdir -p "$INSTALL_DIR"
-    git clone --depth 1 --branch "$REPO_TAG" "$REPO_URL" "$INSTALL_DIR" 2>&1 | tail -3
-    REPO_CLONED=true
-    log_success "Repository cloned to $INSTALL_DIR"
+    clone_repository_with_permissions "$REPO_URL" "$INSTALL_DIR" "$REPO_TAG"
 
     if [ ! -d "$BACKEND_DIR" ]; then
         log_error "Backend directory not found at $BACKEND_DIR"
@@ -916,16 +953,19 @@ EOF
 
     # Backend location
     echo ""
+    BACKEND_IP="$SERVER_IP"
+    
     if [ "$INTERACTIVE_MODE" = true ]; then
         # In interactive mode, keep asking until valid IP is provided
-        while [ -z "$BACKEND_IP" ] || ! validate_ip "$BACKEND_IP"; do
-            echo -e "${YELLOW}Enter the BACKEND server IP:${NC}"
-            read -r BACKEND_IP
-            if [ -z "$BACKEND_IP" ]; then
-                log_error "Backend IP cannot be empty"
-            elif ! validate_ip "$BACKEND_IP"; then
+        while true; do
+            echo -e "${YELLOW}Enter the BACKEND server IP (default: ${BACKEND_IP}):${NC}"
+            read -r USER_BACKEND_IP
+            BACKEND_IP="${USER_BACKEND_IP:-$SERVER_IP}"
+            
+            if validate_ip "$BACKEND_IP"; then
+                break
+            else
                 log_error "Invalid IP address format: $BACKEND_IP"
-                BACKEND_IP=""
             fi
         done
         
@@ -940,16 +980,9 @@ EOF
             fi
         done
     else
-        echo -e "${YELLOW}Enter the BACKEND server IP:${NC}"
-        read -r BACKEND_IP
-        if [ -z "$BACKEND_IP" ]; then
-            log_error "Backend IP is required"
-            exit 1
-        fi
-        
-        echo -e "${YELLOW}Enter the BACKEND port (default: 3000):${NC}"
-        read -r BACKEND_PORT
-        BACKEND_PORT="${BACKEND_PORT:-3000}"
+        log_info "Using server IP as backend IP: $BACKEND_IP"
+        BACKEND_PORT="3000"
+        log_info "Using default backend port: $BACKEND_PORT"
     fi
     log_success "Backend location: ${BACKEND_IP}:${BACKEND_PORT}"
 
@@ -964,9 +997,7 @@ EOF
     log_header "Cloning Frontend Files"
 
     TEMP_CLONE="/tmp/clutchpay-clone-$$"
-    log_step "Cloning repository (tag: $REPO_TAG)..."
-    git clone --depth 1 --branch "$REPO_TAG" "$REPO_URL" "$TEMP_CLONE" 2>&1 | tail -3
-    log_success "Repository cloned"
+    clone_repository_with_permissions "$REPO_URL" "$TEMP_CLONE" "$REPO_TAG"
 
     ################################################################################
     # Configure Apache Virtual Host
@@ -1161,16 +1192,7 @@ EOF
         $SUDO_CMD mv "$INSTALL_DIR" "${INSTALL_DIR}.backup.$(date +%s)"
     fi
 
-    log_step "Cloning from GitHub (tag: $REPO_TAG)..."
-    $SUDO_CMD git clone --branch "$REPO_TAG" --depth 1 "$REPO_URL" "$INSTALL_DIR" > /dev/null 2>&1 || { log_error "Git clone failed"; exit 1; }
-    REPO_CLONED=true
-    log_success "Repository cloned to $INSTALL_DIR"
-
-    # Set proper ownership if not running as root
-    if [ "$IS_ROOT" = false ]; then
-        log_step "Setting proper ownership..."
-        $SUDO_CMD chown -R $USER:$USER "$INSTALL_DIR"
-    fi
+    clone_repository_with_permissions "$REPO_URL" "$INSTALL_DIR" "$REPO_TAG"
 
     # Validate expected directories
     if [ ! -d "$BACKEND_DIR" ]; then

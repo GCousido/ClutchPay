@@ -1,0 +1,48 @@
+Vagrant.configure("2") do |config|
+  config.vm.box = "debian/bullseye64"
+  
+  vagrant_dir = File.dirname(__FILE__)
+
+  config.vm.define "backend" do |back|
+    back.vm.hostname = "clutchpay-backend"
+    back.vm.network "public_network", use_dhcp_assigned_default_route: true
+    
+    back.vm.provider "virtualbox" do |vb|
+      vb.name = "ClutchPay-Backend"
+      vb.memory = 4096
+      vb.cpus = 2
+    end
+
+    back.vm.provision "file", source: "../../installer.sh", destination: "/tmp/installer.sh"
+    back.vm.provision "shell", inline: "ip link set eth1 up && dhclient eth1 || true && sleep 3"
+    back.vm.provision "shell", inline: <<-SHELL
+      MY_IP=$(ip addr show eth1 | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+      if [ -z "$MY_IP" ]; then exit 1; fi
+      echo "$MY_IP" > /vagrant/.backend_ip
+
+      cp /tmp/installer.sh /installer.sh && chmod +x /installer.sh
+    SHELL
+  end
+
+  config.vm.define "frontend" do |front|
+    front.vm.hostname = "clutchpay-frontend"
+    front.vm.network "public_network", use_dhcp_assigned_default_route: true
+    
+    front.vm.provider "virtualbox" do |vb|
+      vb.name = "ClutchPay-Frontend"
+      vb.memory = 2048
+      vb.cpus = 1
+    end
+
+    front.vm.provision "file", source: "../../installer.sh", destination: "/tmp/installer.sh"
+
+    front.vm.provision "shell", inline: "ip link set eth1 up && dhclient eth1 || true && sleep 3"
+    front.vm.provision "shell", inline: <<-SHELL
+      MY_IP=$(ip addr show eth1 | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+      if [ -z "$MY_IP" ]; then exit 1; fi
+      echo "$MY_IP" > /vagrant/.frontend_ip
+
+      cp /tmp/installer.sh /installer.sh && chmod +x /installer.sh
+    SHELL
+  end
+end
