@@ -1451,6 +1451,7 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
     log_success "Installation found at: $INSTALL_DIR"
     
     # Determine what to update
+    # In interactive mode: ask user, in non-interactive: update both
     UPDATE_BACKEND=true
     UPDATE_FRONTEND=true
     
@@ -1918,7 +1919,8 @@ while [[ $# -gt 0 ]]; do
             echo "  ./installer.sh --backend-only -i       Install backend (interactive mode)"
             echo "  ./installer.sh --frontend-only         Install only frontend (Apache, static files)"
             echo "  ./installer.sh --frontend-only -i      Install frontend (interactive mode)"
-            echo "  ./installer.sh --update [tag]          Update to a specific version"
+            echo "  ./installer.sh --update [tag]          Update to a specific version (non-interactive)"
+            echo "  ./installer.sh -i --update [tag]       Update with interactive mode and specific tag"
             echo "  ./installer.sh --config-backend        Configure backend (new frontend location)"
             echo "  ./installer.sh --config-frontend       Configure frontend (new backend location)"
             echo "  ./installer.sh --help                  Show this help message"
