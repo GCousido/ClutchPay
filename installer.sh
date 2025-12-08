@@ -541,19 +541,62 @@ setup_frontend_installation() {
     local frontend_port="$2"
     local backend_ip="$3"
     local backend_port="$4"
+    local apache_doc_root="/var/www/clutchpay"
 
     log_header "Setting up Frontend"
 
+    # Ask for Apache document root in interactive mode
+    if [ "$INTERACTIVE_MODE" = true ]; then
+        echo -e "${YELLOW}Enter Apache document root (default: /var/www/clutchpay):${NC}"
+        read -r USER_APACHE_DOC_ROOT
+        apache_doc_root="${USER_APACHE_DOC_ROOT:-/var/www/clutchpay}"
+    fi
+    
+    log_step "Using Apache document root: $apache_doc_root"
+
+    # Check if Apache document root already exists
+    if [ -d "$apache_doc_root" ] && [ -n "$(ls -A "$apache_doc_root" 2>/dev/null)" ]; then
+        log_warning "Directory $apache_doc_root already exists with files!"
+        
+        echo -e "${YELLOW}What would you like to do?${NC}"
+        echo "  1) Overwrite existing files"
+        echo "  2) Backup existing files and install new ones"
+        echo "  3) Cancel installation"
+        echo -n "  Enter your choice (1-3): "
+        read -r CHOICE
+        
+        case "$CHOICE" in
+            1)
+                log_step "Overwriting existing files..."
+                ;;
+            2)
+                BACKUP_DIR="${apache_doc_root}.backup.$(date +%s)"
+                log_step "Backing up existing files to $BACKUP_DIR..."
+                $SUDO_CMD mv "$apache_doc_root" "$BACKUP_DIR"
+                log_success "Backup created at $BACKUP_DIR"
+                ;;
+            3)
+                log_error "Installation cancelled by user"
+                cleanup
+                exit 1
+                ;;
+            *)
+                log_error "Invalid choice: $CHOICE"
+                cleanup
+                exit 1
+                ;;
+        esac
+    fi
+
     # Copy frontend files to Apache document root
-    APACHE_DOC_ROOT="/var/www/clutchpay"
-    log_step "Copying frontend files to ${APACHE_DOC_ROOT}..."
-    $SUDO_CMD mkdir -p "$APACHE_DOC_ROOT"
-    $SUDO_CMD cp -r "$frontend_dir"/* "$APACHE_DOC_ROOT/"
-    $SUDO_CMD chown -R www-data:www-data "$APACHE_DOC_ROOT"
+    log_step "Copying frontend files to ${apache_doc_root}..."
+    $SUDO_CMD mkdir -p "$apache_doc_root"
+    $SUDO_CMD cp -r "$frontend_dir"/* "$apache_doc_root/"
+    $SUDO_CMD chown -R www-data:www-data "$apache_doc_root"
     log_success "Frontend files copied"
 
     # Configure Apache Virtual Host using helper function
-    configure_apache_vhost "$APACHE_DOC_ROOT" "$frontend_port" "$backend_ip" "$backend_port"
+    configure_apache_vhost "$apache_doc_root" "$frontend_port" "$backend_ip" "$backend_port"
 }
 
 
