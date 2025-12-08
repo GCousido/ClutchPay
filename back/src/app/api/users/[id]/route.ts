@@ -1,9 +1,20 @@
 // app/api/users/[id]/route.ts
 import { handleError, requireAuth, requireSameUser, validateBody } from '@/libs/api-helpers';
+import { deleteImage, extractPublicId, uploadImage } from '@/libs/cloudinary';
 import { db } from '@/libs/db';
 import { userUpdateSchema } from '@/libs/validations';
 import { NextResponse } from 'next/server';
 
+/**
+ * GET /api/users/:id
+ * Retrieves user profile by ID (user can only access their own profile)
+ * @param {Request} request - HTTP request
+ * @param {object} params - Route parameters with user ID
+ * @returns {Promise<NextResponse>} User profile object
+ * @throws {401} If user is not authenticated
+ * @throws {403} If user tries to access another user's profile
+ * @throws {400} If user ID is invalid
+ */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const sessionUser = await requireAuth();
@@ -37,6 +48,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   }
 }
 
+/**
+ * PUT /api/users/:id
+ * Updates user profile (supports image upload to Cloudinary)
+ * User can only update their own profile
+ * @param {Request} request - HTTP request with update data
+ * @param {object} params - Route parameters with user ID
+ * @returns {Promise<NextResponse>} Updated user object
+ * @throws {401} If user is not authenticated
+ * @throws {403} If user tries to update another user's profile
+ * @throws {400} If user ID is invalid or validation fails
+ */
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -56,9 +78,46 @@ export async function PUT(
     const body = await request.json();
     const validated = validateBody(userUpdateSchema, body);
 
+    // Handle image upload if imageBase64 is provided
+    let imageUrl = validated.imageUrl;
+    let oldImagePublicId: string | null = null;
+
+    if (validated.imageBase64) {
+      // Get current user to check for existing image
+      const currentUser = await db.user.findUnique({
+        where: { id: userId },
+        select: { imageUrl: true },
+      });
+
+      // If user has existing image, extract public_id for later deletion
+      if (currentUser?.imageUrl) {
+        oldImagePublicId = extractPublicId(currentUser.imageUrl);
+      }
+
+      // Upload new image to Cloudinary
+      const uploadResult = await uploadImage(validated.imageBase64);
+      imageUrl = uploadResult.url;
+
+      // Delete old image from Cloudinary if exists
+      if (oldImagePublicId) {
+        try {
+          await deleteImage(oldImagePublicId);
+        } catch (error) {
+          console.warn('Failed to delete old image:', error);
+          // Don't fail the request if old image deletion fails
+        }
+      }
+    }
+
+    // Remove imageBase64 from update data (not a DB field)
+    const { imageBase64: _, ...updateData } = validated;
+
     const updated = await db.user.update({
       where: { id: userId },
-      data: validated,
+      data: {
+        ...updateData,
+        ...(imageUrl !== undefined && { imageUrl }),
+      },
     });
     
     return NextResponse.json(updated);

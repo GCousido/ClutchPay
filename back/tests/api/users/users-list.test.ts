@@ -48,7 +48,8 @@ afterAll(async () => {
       },
     },
   });
-});  describe('Authentication', () => {
+});
+  describe('Authentication', () => {
     it('should return 401 when not authenticated', async () => {
       clearMockSession();
       const req = new Request('http://localhost/api/users', {

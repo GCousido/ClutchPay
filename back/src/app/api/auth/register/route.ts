@@ -1,3 +1,4 @@
+// app/api/auth/register/route.ts
 import { db } from "@/libs/db";
 import { formatZodError } from "@/libs/validations";
 import { userCreateSchema } from '@/libs/validations/user';
@@ -5,6 +6,14 @@ import { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 
+/**
+ * POST /api/auth/register
+ * Registers a new user with email and password
+ * Hashes password with bcrypt before storing
+ * @param {Request} request - HTTP request with user registration data
+ * @returns {Promise<NextResponse>} Created user object (201)
+ * @throws {400} If validation fails or email already exists
+ */
 export async function POST(request: Request) {
   try {
     const body = await request.json();

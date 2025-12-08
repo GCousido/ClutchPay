@@ -103,6 +103,17 @@ export const userUpdateSchema = z.object({
     .url('Invalid image URL')
     .optional()
     .nullable(),
+  imageBase64: z
+    .string()
+    .startsWith('data:image/', 'Invalid image format. Must be base64 encoded image')
+    .optional(),
+});
+
+// Schema for uploading profile image
+export const userImageUploadSchema = z.object({
+  imageBase64: z
+    .string()
+    .startsWith('data:image/', 'Invalid image format. Must be base64 encoded image'),
 });
 
 // Schema to add contacts (many-to-many)
@@ -114,3 +125,4 @@ export const addContactSchema = z.object({
 export type UserCreateInput = z.infer<typeof userCreateSchema>;
 export type UserUpdateInput = z.infer<typeof userUpdateSchema>;
 export type AddContactInput = z.infer<typeof addContactSchema>;
+export type UserImageUploadInput = z.infer<typeof userImageUploadSchema>;

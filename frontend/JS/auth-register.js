@@ -1,3 +1,24 @@
+/**
+ * Registration Page Logic
+ * 
+ * @module auth-register
+ * @description Script that handles the new user registration form.
+ * Includes dynamic country selector translation and form validation.
+ * 
+ * Registration flow:
+ * 1. User fills out form
+ * 2. Real-time validations (via validaciones.js)
+ * 3. Submit: disables button and shows loading state
+ * 4. Sends data to auth.register()
+ * 5. If success: shows notification and redirects to login after 1.5s
+ * 6. If error: shows message and re-enables button
+ * 
+ * Dependencies:
+ * - i18n.js: Translations
+ * - auth.js: Auth class for registration
+ * - notifications.js: Toast messages
+ * - validaciones.js: Field validation
+ */
 //auth-register.js
 document.addEventListener('DOMContentLoaded', function () {
     i18n.setLanguage(localStorage.getItem('lang') || 'es');
@@ -5,16 +26,26 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!form) return;
     const authInstance = new Auth();
 
-    // --- TRADUCCIÓN DE OPCIONES DEL SELECT DE PAÍS ---
+    /**
+     * Dynamic country selector translation
+     * 
+     * @description
+     * Iterates over all options in #country select and:
+     * - Translates placeholder (option without value)
+     * - Translates each country name using i18n.t('country.countries.{code}')
+     * 
+     * Supports 69 countries with ES/EN translations
+     */
+    // --- COUNTRY SELECT OPTIONS TRANSLATION ---
     const countrySelect = document.getElementById('country');
     if (countrySelect) {
         const options = countrySelect.querySelectorAll('option');
         options.forEach(option => {
             if (!option.value) {
-                // Placeholder traducido
+                // Translated placeholder
                 option.textContent = i18n.t('country.selectCountry');
             } else {
-                // Nombre país traducido
+                // Translated country name
                 const key = `country.countries.${option.value}`;
                 let txt = i18n.t(key);
                 option.textContent = txt;
@@ -22,6 +53,33 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    /**
+     * Form submit event handler
+     * 
+     * @description
+     * Process:
+     * 1. Prevents default submission
+     * 2. Disables button and shows "Creating account..."
+     * 3. Collects form data (trim on text fields)
+     * 4. Calls authInstance.register(formData)
+     * 5. If success:
+     *    - Shows success notification
+     *    - Waits 1.5s and redirects to login.html
+     * 6. If error:
+     *    - Shows backend error message
+     *    - Re-enables button with original text
+     * 7. If exception (network error):
+     *    - Shows generic connection message
+     *    - Re-enables button
+     * 
+     * Submitted fields:
+     * @property {string} name - User's first name
+     * @property {string} surnames - User's last names
+     * @property {string} email - User's email
+     * @property {string} password - Password (no trim for security)
+     * @property {string} phone - Phone in international format
+     * @property {string} country - ISO country code
+     */
     // --- Submit del registro ---
     form.addEventListener('submit', async function (e) {
         e.preventDefault();
@@ -43,18 +101,20 @@ document.addEventListener('DOMContentLoaded', function () {
         try {
             const { ok, error } = await authInstance.register(formData);
             if (ok) {
-                window.location.href = '../login.html';
+                showSuccessMessage(i18n.t('register.creatingAccount') || 'Registro exitoso');
+                setTimeout(() => {
+                    window.location.href = '../login.html';
+                }, 1500);
             } else {
-                alert(error);
+                showErrorMessage(error);
                 submitBtn.disabled = false;
                 submitBtn.textContent = originalText;
             }
         } catch (error) {
             console.error('Error:', error);
-            alert(i18n.t('general.connectionError'));
+            showErrorMessage(i18n.t('general.connectionError'));
             submitBtn.disabled = false;
             submitBtn.textContent = originalText;
         }
     });
 });
-

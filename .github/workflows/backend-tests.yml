@@ -1,0 +1,151 @@
+name: Backend Tests CI/CD
+
+on:
+  push:
+    branches: [main, production]
+    paths:
+      - 'back/**'
+      - '.github/workflows/backend-tests.yml'
+  pull_request:
+    branches: [main, production, develop]
+    paths:
+      - 'back/**'
+      - '.github/workflows/backend-tests.yml'
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }} - Node ${{ matrix.node-version }}
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        node-version: [20.x, 22.x]
+      fail-fast: false
+    
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: clutchpay_test_db
+          POSTGRES_USER: clutchpay_test_user
+          POSTGRES_PASSWORD: clutchpay_test_pass
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+      
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'pnpm'
+          cache-dependency-path: back/pnpm-lock.yaml
+      
+      - name: Install dependencies
+        working-directory: ./back
+        run: pnpm install --no-frozen-lockfile
+      
+      - name: Setup test environment variables
+        shell: bash
+        working-directory: ./back
+        run: |
+          cat > .env << EOF
+          DATABASE_URL=postgresql://clutchpay_test_user:clutchpay_test_pass@localhost:5432/clutchpay_test_db?schema=public
+          TEST_DATABASE_URL=postgresql://clutchpay_test_user:clutchpay_test_pass@localhost:5432/clutchpay_test_db?schema=public
+          NEXTAUTH_URL=http://localhost:3000
+          NEXTAUTH_SECRET=test-secret-key-for-ci-cd-testing-only
+          JWT_SECRET=test-jwt-secret-for-ci-cd-testing-only
+          NODE_ENV=test
+          NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=${{ secrets.CLOUDINARY_CLOUD_NAME }}
+          NEXT_PUBLIC_CLOUDINARY_API_KEY=${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET=${{ secrets.CLOUDINARY_API_SECRET }}
+          EOF
+      
+      - name: Run Prisma migrations
+        working-directory: ./back
+        run: |
+          pnpm exec prisma migrate deploy
+          pnpm exec prisma generate
+      
+      - name: Run tests
+        working-directory: ./back
+        run: pnpm run test
+      
+      - name: Run tests with coverage
+        working-directory: ./back
+        run: pnpm run test:coverage
+      
+      - name: Run Cloudinary integration tests
+        if: matrix.os == 'ubuntu-latest' && matrix.node-version == '22.x'
+        working-directory: ./back
+        env:
+          RUN_CLOUDINARY_INTEGRATION: 'true'
+        run: pnpm test cloudinary-integration
+      
+      - name: Upload coverage to Codecov
+        if: matrix.os == 'ubuntu-latest' && matrix.node-version == '22.x'
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./back/coverage/lcov.info
+          flags: backend
+          name: backend-coverage
+          fail_ci_if_error: false
+      
+      - name: Archive test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}-node${{ matrix.node-version }}
+          path: |
+            back/coverage/
+            back/test-results/
+          retention-days: 30
+  
+  build:
+    name: Build Check on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: 'pnpm'
+          cache-dependency-path: back/pnpm-lock.yaml
+      
+      - name: Install dependencies
+        working-directory: ./back
+        run: pnpm install --no-frozen-lockfile
+      
+      - name: Generate Prisma Client
+        working-directory: ./back
+        run: pnpm exec prisma generate
+      
+      - name: Build project
+        working-directory: ./back
+        run: pnpm run build
