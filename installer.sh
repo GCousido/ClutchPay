@@ -697,17 +697,20 @@ common_setup() {
                     CONFIRMED=true
                 elif [[ "$IP_CONFIRM" =~ ^[Nn]$ ]]; then
                     # Keep asking for new IP until valid
-                    while [ -z "$SERVER_IP" ] || ! validate_ip "$SERVER_IP"; do
+                    while true; do
                         echo -e "${YELLOW}Please enter the correct server IP address:${NC}"
-                        read -r SERVER_IP
-                        if [ -z "$SERVER_IP" ]; then
+                        read -r NEW_IP
+                        if [ -z "$NEW_IP" ]; then
                             log_error "Server IP cannot be empty"
-                        elif ! validate_ip "$SERVER_IP"; then
-                            log_error "Invalid IP address format: $SERVER_IP"
-                            SERVER_IP=""
+                        elif validate_ip "$NEW_IP"; then
+                            SERVER_IP="$NEW_IP"
+                            break
+                        else
+                            log_error "Invalid IP address format: $NEW_IP"
                         fi
                     done
-                    CONFIRMED=true
+                    # After getting new IP, ask for confirmation again
+                    CONFIRMED=false
                 else
                     log_error "Please answer Y (yes) or N (no)"
                 fi
