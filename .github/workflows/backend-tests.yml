@@ -148,4 +148,6 @@ jobs:
       
       - name: Build project
         working-directory: ./back
+        env: 
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
         run: pnpm run build
