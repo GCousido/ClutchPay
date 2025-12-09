@@ -104,7 +104,6 @@ export async function GET(request: Request) {
 				nextPage: page < totalPages ? page + 1 : null,
 				prevPage: page > 1 ? page - 1 : null,
 			},
-			//FIXME: MODIFICADO PARA LO DE CLOUDINARY
 			data: invoicesWithSignedUrls,
 		});
 	} catch (error) {

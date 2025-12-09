@@ -484,4 +484,227 @@ describe('POST /api/payments/stripe/webhook', () => {
 
     expect(payment).not.toBeNull();
   });
+
+  it('should handle webhook processing errors gracefully', async () => {
+    // Create invalid event structure to trigger error
+    const invalidEvent = {
+      id: 'evt_test',
+      type: 'checkout.session.completed',
+      data: null, // This will cause an error
+    };
+
+    vi.mocked(stripeLib.verifyWebhookSignature).mockReturnValue(invalidEvent as any);
+
+    const request = new Request('http://localhost:3000/api/payments/stripe/webhook', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'stripe-signature': 'valid_signature',
+      },
+      body: JSON.stringify(invalidEvent),
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(500);
+    const data = await response.json();
+    expect(data.error).toBe('Webhook processing failed');
+  });
+
+  it('should skip processing if invoice metadata is missing', async () => {
+    const session = createCheckoutSession({
+      metadata: {
+        // Missing invoiceId
+        payerId: '2',
+        receiverId: '1',
+      },
+    });
+    const event = createEvent('checkout.session.completed', session);
+
+    vi.mocked(stripeLib.verifyWebhookSignature).mockReturnValue(event);
+
+    const request = new Request('http://localhost:3000/api/payments/stripe/webhook', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'stripe-signature': 'valid_signature',
+      },
+      body: JSON.stringify(event),
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+
+    // No payment should be created
+    const payments = await db.payment.findMany();
+    expect(payments).toHaveLength(0);
+  });
+
+  it('should skip processing if invoice not found', async () => {
+    const session = createCheckoutSession({
+      metadata: {
+        invoiceId: '99999', // Non-existent invoice
+        payerId: '2',
+        receiverId: '1',
+        invoiceNumber: 'INV-NOTFOUND',
+        payerEmail: 'debtor@test.com',
+        receiverEmail: 'issuer@test.com',
+      },
+    });
+    const event = createEvent('checkout.session.completed', session);
+
+    vi.mocked(stripeLib.verifyWebhookSignature).mockReturnValue(event);
+
+    const request = new Request('http://localhost:3000/api/payments/stripe/webhook', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'stripe-signature': 'valid_signature',
+      },
+      body: JSON.stringify(event),
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+
+    // No payment should be created
+    const payments = await db.payment.findMany();
+    expect(payments).toHaveLength(0);
+  });
+
+  it('should skip processing if invoice is already paid', async () => {
+    // Update invoice to PAID status
+    await db.invoice.update({
+      where: { id: testInvoice.id },
+      data: { status: InvoiceStatus.PAID },
+    });
+
+    const session = createCheckoutSession({
+      metadata: {
+        invoiceId: testInvoice.id.toString(),
+        payerId: '2',
+        receiverId: '1',
+        invoiceNumber: 'INV-WEBHOOK-001',
+        payerEmail: 'debtor@test.com',
+        receiverEmail: 'issuer@test.com',
+      },
+    });
+    const event = createEvent('checkout.session.completed', session);
+
+    vi.mocked(stripeLib.verifyWebhookSignature).mockReturnValue(event);
+
+    const request = new Request('http://localhost:3000/api/payments/stripe/webhook', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'stripe-signature': 'valid_signature',
+      },
+      body: JSON.stringify(event),
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+
+    // No new payment should be created
+    const payments = await db.payment.findMany();
+    expect(payments).toHaveLength(0);
+  });
+
+  it('should generate PDF receipt when Stripe receipt retrieval fails', async () => {
+    // Mock Stripe receipt retrieval to fail
+    const stripeMock = await import('../../../src/libs/stripe');
+    vi.mocked(stripeMock.stripe.paymentIntents.retrieve).mockRejectedValue(
+      new Error('Payment intent not found')
+    );
+
+    const session = createCheckoutSession({
+      metadata: {
+        invoiceId: testInvoice.id.toString(),
+        payerId: '2',
+        receiverId: '1',
+        invoiceNumber: 'INV-WEBHOOK-001',
+        payerEmail: 'debtor@test.com',
+        receiverEmail: 'issuer@test.com',
+      },
+    });
+    const event = createEvent('checkout.session.completed', session);
+
+    vi.mocked(stripeLib.verifyWebhookSignature).mockReturnValue(event);
+
+    const request = new Request('http://localhost:3000/api/payments/stripe/webhook', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'stripe-signature': 'valid_signature',
+      },
+      body: JSON.stringify(event),
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+
+    // Payment should be created with PDF receipt
+    const payment = await db.payment.findUnique({
+      where: { invoiceId: testInvoice.id },
+    });
+
+    expect(payment).not.toBeNull();
+    if (payment) {
+      expect(payment.receiptPdfUrl).toContain('cloudinary.com');
+    }
+  });
+
+  it('should use fallback receipt URL when PDF generation fails', async () => {
+    // Mock both Stripe and PDF generation to fail
+    const stripeMock = await import('../../../src/libs/stripe');
+    const pdfMock = await import('../../../src/libs/pdf-generator');
+    
+    vi.mocked(stripeMock.stripe.paymentIntents.retrieve).mockRejectedValue(
+      new Error('Payment intent not found')
+    );
+    vi.mocked(pdfMock.generateReceiptPdf).mockRejectedValue(
+      new Error('PDF generation failed')
+    );
+
+    const session = createCheckoutSession({
+      metadata: {
+        invoiceId: testInvoice.id.toString(),
+        payerId: '2',
+        receiverId: '1',
+        invoiceNumber: 'INV-WEBHOOK-001',
+        payerEmail: 'debtor@test.com',
+        receiverEmail: 'issuer@test.com',
+      },
+    });
+    const event = createEvent('checkout.session.completed', session);
+
+    vi.mocked(stripeLib.verifyWebhookSignature).mockReturnValue(event);
+
+    const request = new Request('http://localhost:3000/api/payments/stripe/webhook', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'stripe-signature': 'valid_signature',
+      },
+      body: JSON.stringify(event),
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+
+    // Payment should be created with fallback URL
+    const payment = await db.payment.findUnique({
+      where: { invoiceId: testInvoice.id },
+    });
+
+    expect(payment).not.toBeNull();
+    if (payment) {
+      expect(payment.receiptPdfUrl).toBe('unavailable');
+    }
+  });
 });
