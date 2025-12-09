@@ -124,5 +124,34 @@ export async function deletePdf(publicId: string) {
   }
 }
 
+/**
+ * Generates a signed URL for secure PDF access
+ * @param {string} publicIdOrUrl - Public ID or full URL of the PDF in Cloudinary
+ * @param {number} [expiresIn=3600] - Expiration time in seconds (default 1 hour)
+ * @returns {string} Signed URL that allows temporary access to the PDF
+ */
+export function getSignedPdfUrl(publicIdOrUrl: string, expiresIn: number = 3600): string {
+  // If it's already a URL, extract the public_id
+  let publicId = publicIdOrUrl;
+  if (publicIdOrUrl.includes('cloudinary.com')) {
+    publicId = extractPublicId(publicIdOrUrl) || publicIdOrUrl;
+  }
+  
+  // Remove .pdf extension if present
+  const cleanPublicId = publicId.replace(/\.pdf$/, '');
+  
+  const timestamp = Math.round(Date.now() / 1000) + expiresIn;
+  
+  // Generate signed URL with proper configuration
+  const signedUrl = cloudinary.url(cleanPublicId + '.pdf', {
+    resource_type: 'raw',
+    sign_url: true,
+    type: 'upload',
+    secure: true
+  });
+  
+  return signedUrl;
+}
+
 export { cloudinary };
 

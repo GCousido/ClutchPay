@@ -1,6 +1,6 @@
 // app/api/invoices/[id]/route.ts
 import { handleError, requireAuth, validateBody } from '@/libs/api-helpers';
-import { deletePdf, extractPublicId, uploadPdf } from '@/libs/cloudinary';
+import { deletePdf, extractPublicId, getSignedPdfUrl, uploadPdf } from '@/libs/cloudinary';
 import { db } from '@/libs/db';
 import { invoiceUpdateSchema } from '@/libs/validations/invoice';
 import { Prisma } from '@prisma/client';
@@ -97,6 +97,12 @@ export async function GET(
 			select: invoiceSelect,
 		});		if (!invoice) {
 			return NextResponse.json({ message: 'Invoice not found' }, { status: 404 });
+		}
+		// Generate signed URL for PDF if exists
+		if (invoice.invoicePdfUrl) {
+			invoice.invoicePdfUrl = getSignedPdfUrl(
+				extractPublicId(invoice.invoicePdfUrl) || ''
+			);
 		}
 
 		return NextResponse.json(invoice);
