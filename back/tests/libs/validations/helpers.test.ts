@@ -105,5 +105,15 @@ describe('Validation Helpers', () => {
         expect((result.data as any).value).toBe('TEST');
       }
     });
+
+    it('should re-throw non-Zod errors', async () => {
+      const errorSchema = z.object({
+        value: z.string().transform(() => {
+          throw new Error('Custom error');
+        }),
+      });
+
+      await expect(validateAsync(errorSchema, { value: 'test' })).rejects.toThrow('Custom error');
+    });
   });
 });

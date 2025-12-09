@@ -10,6 +10,7 @@ import { ZodError, ZodType } from 'zod';
  * @returns {Promise<SessionUser>} Current session user
  */
 export async function requireAuth() {
+  
   const session = await getServerSession(authOptions);
   
   if (!session?.user?.id) {
