@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" width="200" height="60">
+  <defs>
+    <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4ade80;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#22c55e;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Icon: stylized C with payment symbol -->
+  <circle cx="25" cy="30" r="22" fill="url(#logoGradient)"/>
+  <path d="M25 12 C15 12, 8 20, 8 30 C8 40, 15 48, 25 48 C30 48, 35 46, 38 42" 
+        stroke="white" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <path d="M20 24 L30 30 L20 36" stroke="white" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Text -->
+  <text x="55" y="38" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="#1f2937">
+    <tspan fill="#22c55e">Clutch</tspan><tspan fill="#1f2937">Pay</tspan>
+  </text>
+</svg>
