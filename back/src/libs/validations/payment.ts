@@ -64,7 +64,7 @@ export const paymentListQuerySchema = z
     // Validate min/max amount range
     if (data.minAmount !== undefined && data.maxAmount !== undefined && data.minAmount > data.maxAmount) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ['minAmount'],
         message: 'Minimum amount cannot be greater than maximum amount',
       });
@@ -77,7 +77,7 @@ export const paymentListQuerySchema = z
 
     if (dateFrom && dateTo && dateFrom > dateTo) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ['paymentDateFrom'],
         message: 'Start date cannot be after end date',
       });
