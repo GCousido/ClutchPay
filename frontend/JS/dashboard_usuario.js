@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return; //Redirected to login
     }
 
-    //Initialize all dashboard modules
+    //Initialize all dashboard modules first
     const dashboardProfile = new DashboardProfile(dashboardCore);
     const dashboardContacts = new DashboardContacts(dashboardCore);
     const dashboardInvoices = new DashboardInvoices(dashboardCore);
@@ -53,4 +53,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     dashboardContacts.init();
     dashboardInvoices.init();
     dashboardMobile.init();
+
+    // Check for payment redirect parameters AFTER initializing modules
+    const urlParams = new URLSearchParams(window.location.search);
+    const paymentStatus = urlParams.get('payment');
+    const invoiceId = urlParams.get('invoiceId');
+    
+    if (paymentStatus && invoiceId) {
+        if (paymentStatus === 'success') {
+            // Webhook handles database update automatically
+            dashboardCore.showSuccessMessage(i18n.t('invoices.paymentSuccess') || 'Pago completado exitosamente');
+            // Wait 2 seconds for webhook to process, then reload invoices
+            setTimeout(() => dashboardInvoices.loadInvoices(), 2000);
+        } else if (paymentStatus === 'cancel') {
+            dashboardCore.showErrorMessage(i18n.t('invoices.paymentCanceled') || 'Pago cancelado');
+        }
+        
+        // Clean URL parameters
+        const cleanUrl = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+    }
 });

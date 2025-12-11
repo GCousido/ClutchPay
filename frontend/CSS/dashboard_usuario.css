@@ -1026,10 +1026,32 @@ main {
     border-color: var(--color-primary);
 }
 
+/* Error state for modal inputs */
+.modal-content .input-error {
+    border-color: #ef4444 !important;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1) !important;
+}
+
+.modal-content .field-error {
+    color: #ef4444;
+    font-size: 0.85rem;
+    margin-top: 0.25rem;
+    display: block;
+}
+
 [data-theme="dark"] .modal-content input:focus {
     background: rgba(30, 37, 48, 0.8);
     border-color: var(--color-primary);
     box-shadow: 0 0 0 3px rgba(134, 188, 36, 0.2);
+}
+
+[data-theme="dark"] .modal-content .input-error {
+    border-color: #f87171 !important;
+    box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.15) !important;
+}
+
+[data-theme="dark"] .modal-content .field-error {
+    color: #f87171;
 }
 
 .modal-content select {
@@ -1309,7 +1331,7 @@ main {
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
     font-weight: 600;
     opacity: 0;
-    z-index: 9999;
+    z-index: 99999;
     transition: all 0.4s ease;
     color: var(--color-white);
 }
@@ -1325,6 +1347,10 @@ main {
 
 .floating-message.error {
     background: var(--color-error);
+}
+
+.floating-message.warning {
+    background: #f59e0b;
 }
 
 /* ===== CONFIRM MODAL ===== */
@@ -1696,4 +1722,53 @@ main {
 
 .form-actions .btn {
     min-width: 120px;
+}
+
+/* Stripe Payment Button */
+.invoice-payment-actions {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 2px solid var(--color-border);
+}
+
+.btn-stripe {
+    width: 100%;
+    padding: 1rem 1.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+    color: white;
+    box-shadow: 0 4px 12px rgba(134, 188, 36, 0.3);
+}
+
+.btn-stripe:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(134, 188, 36, 0.4);
+    background: linear-gradient(135deg, var(--color-primary-light) 0%, var(--color-primary) 100%);
+}
+
+.btn-stripe:active {
+    transform: translateY(0);
+}
+
+.btn-stripe:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+[data-theme="dark"] .btn-stripe {
+    box-shadow: 0 4px 12px rgba(134, 188, 36, 0.5);
+}
+
+[data-theme="dark"] .btn-stripe:hover {
+    box-shadow: 0 6px 20px rgba(134, 188, 36, 0.6);
 }

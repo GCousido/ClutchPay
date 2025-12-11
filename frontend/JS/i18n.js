@@ -209,7 +209,12 @@ const MESSAGES = {
             pdfFile: "Archivo PDF",
             invoiceCreated: "Factura creada correctamente",
             errorCreating: "Error al crear la factura",
-            errorLoading: "Error al cargar las facturas"
+            errorLoading: "Error al cargar las facturas",
+            validationErrors: "Por favor, corrige los errores en el formulario",
+            payWithStripe: "Pagar con Stripe",
+            paymentSuccess: "Pago completado exitosamente",
+            paymentCanceled: "Pago cancelado",
+            paymentPending: "El pago está siendo procesado"
         },
         general: {
             welcome: "Bienvenido a ClutchPay",
@@ -396,7 +401,12 @@ const MESSAGES = {
             pdfFile: "PDF File",
             invoiceCreated: "Invoice created successfully",
             errorCreating: "Error creating invoice",
-            errorLoading: "Error loading invoices"
+            errorLoading: "Error loading invoices",
+            validationErrors: "Please correct the errors in the form",
+            payWithStripe: "Pay with Stripe",
+            paymentSuccess: "Payment completed successfully",
+            paymentCanceled: "Payment canceled",
+            paymentPending: "Payment is being processed"
         },
         general: {
             welcome: "Welcome to ClutchPay",
