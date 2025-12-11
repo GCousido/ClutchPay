@@ -306,6 +306,16 @@ class DashboardInvoices {
                             </div>
                         </div>
                         ` : ''}
+                        
+                        ${invoice.type === 'received' && (invoice.status === 'PENDING' || invoice.status === 'OVERDUE') && !invoice.payment ? `
+                        <div class="invoice-modal-section">
+                            <div class="invoice-payment-actions">
+                                <button id="pay-with-stripe-btn" class="btn btn-stripe" data-invoice-id="${invoice.id}">
+                                    💳 <span data-i18n="invoices.payWithStripe">Pagar con Stripe</span>
+                                </button>
+                            </div>
+                        </div>
+                        ` : ''}
                     </div>
                 </div>
             </div>
@@ -329,9 +339,6 @@ class DashboardInvoices {
         };
         
         closeBtn.addEventListener('click', closeModal);
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) closeModal();
-        });
         
         // Add PDF download handler
         const downloadBtn = document.getElementById('download-pdf-btn');
@@ -339,6 +346,14 @@ class DashboardInvoices {
             downloadBtn.addEventListener('click', () => {
                 const pdfUrl = downloadBtn.dataset.pdfUrl;
                 window.open(pdfUrl, '_blank');
+            });
+        }
+        
+        // Add Stripe payment handler
+        const stripeBtn = document.getElementById('pay-with-stripe-btn');
+        if (stripeBtn) {
+            stripeBtn.addEventListener('click', async () => {
+                await this.handleStripePayment(invoice, closeModal);
             });
         }
         
@@ -578,9 +593,6 @@ class DashboardInvoices {
 
         closeBtn.addEventListener('click', closeModal);
         cancelBtn.addEventListener('click', closeModal);
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) closeModal();
-        });
 
         form.addEventListener('submit', (e) => this.handleCreateInvoice(e, modal));
 
@@ -597,6 +609,10 @@ class DashboardInvoices {
         const form = e.target;
         const submitBtn = form.querySelector('button[type="submit"]');
         const originalText = submitBtn.innerHTML;
+        
+        // Clear previous error messages
+        form.querySelectorAll('.field-error').forEach(el => el.remove());
+        form.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));
         
         try {
             submitBtn.disabled = true;
@@ -625,7 +641,7 @@ class DashboardInvoices {
                 issuerUserId: parseInt(this.core.currentUser.id),
                 debtorUserId: parseInt(formData.get('debtorUserId')),
                 subject: formData.get('subject'),
-                description: formData.get('description') || '',
+                description: formData.get('description') || 'Sin descripción',
                 amount: parseFloat(formData.get('amount')),
                 issueDate: new Date(formData.get('issueDate')).toISOString(),
                 dueDate: formData.get('dueDate') ? new Date(formData.get('dueDate')).toISOString() : null,
@@ -637,8 +653,8 @@ class DashboardInvoices {
                 const base64 = await this.fileToBase64(pdfFile);
                 data.invoicePdf = base64;
             } else {
-                // No PDF provided, backend will validate
-                data.invoicePdf = '';
+                // PDF is required
+                throw new Error('El PDF de la factura es obligatorio');
             }
 
             const response = await fetch(
@@ -655,7 +671,39 @@ class DashboardInvoices {
 
             if (!response.ok) {
                 const error = await response.json();
-                throw new Error(error.message || 'Error al crear la factura');
+                
+                // Check if error has field-specific validation errors
+                if (error.errors && typeof error.errors === 'object') {
+                    // Display field-specific errors
+                    for (const [field, message] of Object.entries(error.errors)) {
+                        // Map backend field names to frontend input IDs
+                        let inputId = field;
+                        if (field === 'invoiceNumber') inputId = 'invoice-number';
+                        if (field === 'debtorUserId') inputId = 'debtor-user';
+                        if (field === 'issueDate') inputId = 'issue-date';
+                        if (field === 'dueDate') inputId = 'due-date';
+                        
+                        const input = form.querySelector(`#${inputId}`);
+                        if (input) {
+                            input.classList.add('input-error');
+                            
+                            // Create error message element
+                            const errorEl = document.createElement('div');
+                            errorEl.className = 'field-error';
+                            errorEl.textContent = message;
+                            errorEl.style.color = '#ef4444';
+                            errorEl.style.fontSize = '0.85rem';
+                            errorEl.style.marginTop = '0.25rem';
+                            
+                            // Insert after input or its parent
+                            const container = input.closest('.form-group') || input.parentNode;
+                            container.appendChild(errorEl);
+                        }
+                    }
+                    throw new Error(error.message || i18n.t('invoices.validationErrors') || 'Por favor, corrige los errores en el formulario');
+                } else {
+                    throw new Error(error.message || 'Error al crear la factura');
+                }
             }
 
             this.core.showSuccessMessage(i18n.t('invoices.invoiceCreated'));
@@ -671,6 +719,50 @@ class DashboardInvoices {
         } finally {
             submitBtn.disabled = false;
             submitBtn.innerHTML = originalText;
+        }
+    }
+
+    /**
+     * Handles Stripe payment for an invoice
+     * Creates a Stripe checkout session and redirects to payment page
+     * 
+     * @param {Object} invoice - Invoice to pay
+     * @param {Function} closeModal - Function to close the modal
+     */
+    async handleStripePayment(invoice, closeModal) {
+        try {
+            // Show loading state
+            const stripeBtn = document.getElementById('pay-with-stripe-btn');
+            const originalText = stripeBtn.innerHTML;
+            stripeBtn.disabled = true;
+            stripeBtn.innerHTML = '<span data-i18n="general.loading">Procesando...</span>';
+
+            // Initialize PaymentManager if not exists
+            if (!window.paymentManager) {
+                window.paymentManager = new PaymentManager(this.core.authInstance);
+            }
+
+            // Create Stripe checkout session
+            const result = await window.paymentManager.createCheckoutSession(invoice.id);
+
+            if (!result.success) {
+                throw new Error(result.error || 'Error al crear la sesión de pago');
+            }
+            
+            // Redirect to Stripe Checkout
+            console.log('[Invoice] Redirecting to Stripe:', result.checkoutUrl);
+            window.location.href = result.checkoutUrl;
+
+        } catch (error) {
+            console.error('Error processing Stripe payment:', error);
+            this.core.showErrorMessage(error.message || 'Error al procesar el pago con Stripe');
+            
+            // Restore button state
+            const stripeBtn = document.getElementById('pay-with-stripe-btn');
+            if (stripeBtn) {
+                stripeBtn.disabled = false;
+                stripeBtn.innerHTML = '💳 <span data-i18n="invoices.payWithStripe">Pagar con Stripe</span>';
+            }
         }
     }
 
