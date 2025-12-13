@@ -4,12 +4,12 @@ import PDFDocument from 'pdfkit';
 
 // Brand colors
 const COLORS = {
-  primary: '#f97316',      // Orange 500
-  primaryLight: '#fb923c', // Orange 400
-  primaryDark: '#ea580c',  // Orange 600
+  primary: '#6FA01D',      // Green 500 (matches logo)
+  primaryLight: '#89c71f', // Green 400 (lighter)
+  primaryDark: '#5a8015',  // Green 600 (darker)
   text: '#1f2937',         // Gray 800
   textLight: '#6b7280',    // Gray 500
-  background: '#fff7ed',   // Orange 50
+  background: '#f0fdf4',   // Green 50
   white: '#ffffff',
 };
 
