@@ -51,9 +51,6 @@ importers:
       stripe:
         specifier: ^20.0.0
         version: 20.0.0(@types/node@20.19.24)
-      svg-to-pdfkit:
-        specifier: ^0.1.8
-        version: 0.1.8
       tsx:
         specifier: ^4.20.6
         version: 4.20.6
@@ -2983,9 +2980,6 @@ packages:
   supports-preserve-symlinks-flag@1.0.0:
     resolution: {integrity: sha512-ot0WnXS9fgdkgIcePe6RHNk1WA8+muPa6cSjeR3V8K27q9BB1rTE3R1p7Hv0z1ZyAc8s6Vvv8DIyWf681MAt0w==}
     engines: {node: '>= 0.4'}
-
-  svg-to-pdfkit@0.1.8:
-    resolution: {integrity: sha512-QItiGZBy5TstGy+q8mjQTMGRlDDOARXLxH+sgVm1n/LYeo0zFcQlcCh8m4zi8QxctrxB9Kue/lStc/RD5iLadQ==}
 
   tailwindcss@4.1.16:
     resolution: {integrity: sha512-pONL5awpaQX4LN5eiv7moSiSPd/DLDzKVRJz8Q9PgzmAdd1R4307GQS2ZpfiN7ZmekdQrfhZZiSE5jkLR4WNaA==}
@@ -6387,10 +6381,6 @@ snapshots:
       has-flag: 4.0.0
 
   supports-preserve-symlinks-flag@1.0.0: {}
-
-  svg-to-pdfkit@0.1.8:
-    dependencies:
-      pdfkit: 0.17.2
 
   tailwindcss@4.1.16: {}
 

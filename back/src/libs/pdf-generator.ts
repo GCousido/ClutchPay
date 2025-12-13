@@ -1,13 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 import PDFDocument from 'pdfkit';
-import SVGtoPDF from 'svg-to-pdfkit';
 
 // Brand colors
 const COLORS = {
-  primary: '#22c55e',      // Green 500
-  primaryLight: '#4ade80', // Green 400
-  primaryDark: '#16a34a',  // Green 600
+  primary: '#6FA01D',      // Green 500 (matches logo)
+  primaryLight: '#89c71f', // Green 400 (lighter)
+  primaryDark: '#5a8015',  // Green 600 (darker)
   text: '#1f2937',         // Gray 800
   textLight: '#6b7280',    // Gray 500
   background: '#f0fdf4',   // Green 50
@@ -61,26 +60,33 @@ export async function generateReceiptPdf(data: ReceiptData): Promise<Buffer> {
     gradient.stop(1, COLORS.primaryDark, 0.3);
     doc.rect(0, 0, pageWidth, 120).fill(gradient);
 
-    // Try to add logo with white background
+    // Try to add logo with white circular background
     try {
-      const logoPath = path.join(process.cwd(), 'src', 'public', 'logo.svg');
+      const logoPath = path.join(process.cwd(), 'src', 'public', 'logo.png');
       if (fs.existsSync(logoPath)) {
-        // White rounded background for logo
+        const logoSize = 70;
+        const logoPadding = 8;
+        
+        // White circular background for logo
         doc
-          .roundedRect(45, 30, 160, 60, 8)
+          .circle(130, 60, logoSize / 2 + logoPadding)
           .fill(COLORS.white);
-        const svgContent = fs.readFileSync(logoPath, 'utf-8');
-        SVGtoPDF(doc, svgContent, 50, 35, { width: 150, height: 50 });
+        
+        // Add logo image
+        doc.image(logoPath, 130 - logoSize / 2, 60 - logoSize / 2, { 
+          width: logoSize, 
+          height: logoSize
+        });
       }
     } catch {
-      // Fallback: text logo with white background
+      // Fallback: text logo with circular white background
       doc
-        .roundedRect(45, 30, 160, 60, 8)
+        .circle(130, 60, 40)
         .fill(COLORS.white);
       doc
-        .fontSize(28)
+        .fontSize(24)
         .fillColor(COLORS.primary)
-        .text('ClutchPay', 50, 45, { continued: false });
+        .text('ClutchPay', 100, 45, { width: 60, align: 'center' });
     }
 
     // Receipt title

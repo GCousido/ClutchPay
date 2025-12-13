@@ -1,5 +1,5 @@
 import { writeFileSync } from 'fs';
-import { generateReceiptPdf } from './src/libs/pdf-generator';
+import { generateReceiptPdf } from '../src/libs/pdf-generator.ts';
 
 async function main() {
   const pdf = await generateReceiptPdf({
