@@ -1,6 +1,7 @@
 // app/api/payments/stripe/webhook/route.ts
 import { uploadPdf } from '@/libs/cloudinary';
 import { db } from '@/libs/db';
+import { notifyPaymentReceived } from '@/libs/notifications';
 import { createPayPalPayout } from '@/libs/paypal';
 import { generateReceiptPdf } from '@/libs/pdf-generator';
 import {
@@ -284,6 +285,23 @@ async function processSuccessfulPayment(session: Stripe.Checkout.Session) {
   });
 
   console.log('[Stripe Webhook] Payment created:', payment.id);
+
+  // Create notification for the invoice issuer about received payment
+  try {
+    const invoiceWithUsers = await db.invoice.findUnique({
+      where: { id: invoiceId },
+      include: {
+        issuerUser: true,
+        debtorUser: true,
+      },
+    });
+    if (invoiceWithUsers) {
+      await notifyPaymentReceived(invoiceWithUsers);
+    }
+  } catch (notificationError) {
+    // Log but don't fail the webhook if notification creation fails
+    console.error('[Stripe Webhook] Failed to create notification:', notificationError);
+  }
 
   // Initiate payout to receiver (PayPal)
   // This transfers funds from Stripe to the invoice issuer's PayPal account

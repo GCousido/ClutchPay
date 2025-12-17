@@ -2,6 +2,7 @@
 import { handleError, requireAuth, validateBody } from '@/libs/api-helpers';
 import { deletePdf, extractPublicId, getSignedPdfUrl, uploadPdf } from '@/libs/cloudinary';
 import { db } from '@/libs/db';
+import { notifyInvoiceCanceled } from '@/libs/notifications';
 import { invoiceUpdateSchema } from '@/libs/validations/invoice';
 import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
@@ -213,10 +214,9 @@ export async function DELETE(
 
 		const invoice = await db.invoice.findUnique({
 			where: { id: invoiceId },
-			select: {
-				issuerUserId: true,
-                debtorUserId: true,
-				invoicePdfUrl: true,
+			include: {
+				issuerUser: true,
+				debtorUser: true,
 				payment: { select: { id: true } },
 			},
 		});
@@ -229,6 +229,14 @@ export async function DELETE(
 			return NextResponse.json({ message: 'Invoices with payments cannot be cancelled' }, { status: 400 });
 		}
 
+		// Create notification for debtor about the cancellation before deleting
+		try {
+			await notifyInvoiceCanceled(invoice);
+		} catch (notificationError) {
+			// Log but don't fail the request if notification creation fails
+			console.error('[Invoice Delete] Failed to create notification:', notificationError);
+		}
+
         // Delete PDF from Cloudinary
 		if (invoice.invoicePdfUrl) {
 			const publicId = extractPublicId(invoice.invoicePdfUrl);
@@ -237,7 +245,7 @@ export async function DELETE(
 			}
 		}
 
-        // Delete invoice
+        // Delete invoice (this will cascade delete notifications related to this invoice)
 		await db.invoice.delete({ where: { id: invoiceId } });
 
 

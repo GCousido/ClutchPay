@@ -118,6 +118,7 @@ describe('POST /api/payments/stripe/webhook', () => {
   });
 
   afterEach(async () => {
+    await db.notification.deleteMany({});
     await db.payment.deleteMany({});
     await db.invoice.deleteMany({});
     await db.user.deleteMany({});

@@ -2,6 +2,7 @@
 import { getPagination, handleError, requireAuth, validateBody } from '@/libs/api-helpers';
 import { getSignedPdfUrl, uploadPdf } from '@/libs/cloudinary';
 import { db } from '@/libs/db';
+import { notifyInvoiceIssued } from '@/libs/notifications';
 import { invoiceCreateSchema, invoiceListQuerySchema } from '@/libs/validations/invoice';
 import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
@@ -162,24 +163,24 @@ export async function POST(request: Request) {
 				dueDate: parsed.dueDate ? new Date(parsed.dueDate) : null,
 				invoicePdfUrl,
 			},
-			select: {
-				id: true,
-				invoiceNumber: true,
-				issuerUserId: true,
-				debtorUserId: true,
-				subject: true,
-				description: true,
-				amount: true,
-				status: true,
-				issueDate: true,
-				dueDate: true,
-				invoicePdfUrl: true,
-				createdAt: true,
-				updatedAt: true,
+			include: {
+				issuerUser: true,
+				debtorUser: true,
 			},
 		});
 
-		return NextResponse.json(invoice, { status: 201 });
+		// Create notification for debtor about the new invoice
+		try {
+			await notifyInvoiceIssued(invoice);
+		} catch (notificationError) {
+			// Log but don't fail the request if notification creation fails
+			console.error('[Invoice Create] Failed to create notification:', notificationError);
+		}
+
+		// Return only the invoice data without user relations
+		const { issuerUser, debtorUser, ...invoiceData } = invoice;
+
+		return NextResponse.json(invoiceData, { status: 201 });
 	} catch (error) {
 		return handleError(error);
 	}
