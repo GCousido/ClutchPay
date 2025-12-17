@@ -46,13 +46,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     const dashboardProfile = new DashboardProfile(dashboardCore);
     const dashboardContacts = new DashboardContacts(dashboardCore);
     const dashboardInvoices = new DashboardInvoices(dashboardCore);
+    const dashboardPayments = new DashboardPayments(dashboardCore);
     const dashboardMobile = new DashboardMobile(dashboardCore);
 
     //Initialize modules
     dashboardProfile.init();
     dashboardContacts.init();
     dashboardInvoices.init();
+    dashboardPayments.init();
     dashboardMobile.init();
+
+    // Initialize main navigation tabs
+    const mainNavTabs = document.querySelectorAll('.main-nav-tab');
+    mainNavTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const section = tab.dataset.section;
+            
+            // Update active tab
+            mainNavTabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            
+            // Update active section
+            document.querySelectorAll('.section-content').forEach(s => s.classList.remove('active'));
+            const targetSection = document.getElementById(`${section}-section`);
+            if (targetSection) targetSection.classList.add('active');
+        });
+    });
 
     // Check for payment redirect parameters AFTER initializing modules
     const urlParams = new URLSearchParams(window.location.search);

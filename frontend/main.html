@@ -18,6 +18,7 @@
     <script src="JS/dashboard/profile.js" defer></script>
     <script src="JS/dashboard/contacts.js" defer></script>
     <script src="JS/dashboard/invoices.js" defer></script>
+    <script src="JS/dashboard/payments.js" defer></script>
     <script src="JS/dashboard/mobile.js" defer></script>
     <script src="JS/dashboard_usuario.js" defer></script>
     <script>
@@ -144,6 +145,26 @@
 
             <!-- MAIN CONTENT -->
             <div class="main-content">
+                <!-- Main Navigation Tabs -->
+                <div class="main-nav-tabs">
+                    <button class="main-nav-tab active" data-section="invoices">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="4" width="18" height="16" rx="2"/>
+                            <line x1="3" y1="10" x2="21" y2="10"/>
+                        </svg>
+                        <span data-i18n="invoices.title">Mis Facturas</span>
+                    </button>
+                    <button class="main-nav-tab" data-section="payments">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
+                            <line x1="1" y1="10" x2="23" y2="10"/>
+                        </svg>
+                        <span data-i18n="payments.title">Mis Pagos</span>
+                    </button>
+                </div>
+
+                <!-- INVOICES SECTION -->
+                <div class="section-content active" id="invoices-section">
                 <div class="invoices-header">
                     <div class="invoices-header-top">
                         <h1 data-i18n="invoices.title">Mis Facturas</h1>
@@ -233,6 +254,55 @@
                     <h3 data-i18n="invoices.noInvoices">No tienes facturas</h3>
                     <p data-i18n="invoices.noInvoicesDesc">Cuando recibas o emitas facturas, aparecerán aquí</p>
                 </div>
+                </div>
+                <!-- End INVOICES SECTION -->
+
+                <!-- PAYMENTS SECTION -->
+                <div class="section-content" id="payments-section">
+                    <div class="invoices-header">
+                        <div class="invoices-header-top">
+                            <h1 data-i18n="payments.title">Mis Pagos</h1>
+                        </div>
+                        
+                        <!-- Filters grouped in one row -->
+                        <div class="invoices-filters-row">
+                            <!-- Sort Selector -->
+                            <div class="invoices-sort">
+                                <label for="payment-sort" data-i18n="invoices.sortBy">Ordenar por:</label>
+                                <select id="payment-sort" class="invoice-sort-select">
+                                    <option value="paymentDate" data-i18n="payments.sortPaymentDate">Fecha de pago</option>
+                                    <option value="amount" data-i18n="invoices.sortAmount">Cantidad</option>
+                                </select>
+                                <button id="payment-sort-order-btn" class="sort-order-btn" title="Orden">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="11 17 7 21 3 17"/>
+                                        <line x1="7" y1="21" x2="7" y2="9"/>
+                                        <polyline points="21 7 17 3 13 7"/>
+                                        <line x1="17" y1="3" x2="17" y2="15"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="invoices-grid" id="payments-grid">
+                        <!-- Payments will be loaded dynamically here -->
+                        <div class="loading-spinner">
+                            <div class="spinner"></div>
+                            <p data-i18n="payments.loading">Cargando pagos...</p>
+                        </div>
+                    </div>
+
+                    <div class="empty-invoices" id="empty-payments" style="display: none;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
+                            <line x1="1" y1="10" x2="23" y2="10"/>
+                        </svg>
+                        <h3 data-i18n="payments.noPayments">No tienes pagos</h3>
+                        <p data-i18n="payments.noPaymentsDesc">Cuando realices pagos, aparecerán aquí</p>
+                    </div>
+                </div>
+                <!-- End PAYMENTS SECTION -->
             </div>
         </div>
 

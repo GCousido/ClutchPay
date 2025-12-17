@@ -47,8 +47,12 @@ body {
 
 body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background: linear-gradient(135deg, var(--color-bg-gradient-start) 0%, var(--color-bg-gradient-end) 100%);
+    background: #ffffff;
     color: var(--color-text-primary);
+}
+
+[data-theme="dark"] body {
+    background: #0a0e12;
 }
 
 main {
@@ -351,6 +355,126 @@ main {
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+    background: rgba(128, 181, 37, 0.332);
+}
+
+[data-theme="dark"] .main-content {
+    background: #1a1f26;
+}
+
+/* ===== MAIN NAVIGATION TABS ===== */
+.main-nav-tabs {
+    display: flex;
+    gap: 0.25rem;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.main-nav-tab {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem 2rem;
+    background: #ffffff;
+    border: none;
+    border-radius: 12px 12px 0 0;
+    color: var(--color-text-secondary);
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="dark"] .main-nav-tab {
+    background: #1e2530;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.main-nav-tab:hover:not(.active) {
+    color: var(--color-primary);
+    background: #fafafa;
+    transform: translateY(-2px);
+}
+
+[data-theme="dark"] .main-nav-tab:hover:not(.active) {
+    background: #252d38;
+}
+
+.main-nav-tab.active {
+    background: #f6fff6;
+    color: var(--color-text-primary);
+    box-shadow: 0 -4px 12px rgba(134, 188, 36, 0.2);
+    transform: translateY(-3px);
+}
+
+[data-theme="dark"] .main-nav-tab.active {
+    background: #161b22;
+    color: var(--color-text-primary);
+}
+
+.main-nav-tab svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* ===== SECTION CONTENT ===== */
+.section-content {
+    display: none;
+    flex-direction: column;
+    flex: 1;
+    overflow-y: auto;
+    background: #f6fff6;
+    border-radius: 0 12px 12px 12px;
+    padding: 2rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="dark"] .section-content {
+    background: #0f1419;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.section-content.active {
+    display: flex;
+}
+
+/* ===== PAYMENT CARDS ===== */
+.payment-card {
+    cursor: pointer;
+}
+
+.payment-method-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.75rem;
+    background: rgba(134, 188, 36, 0.1);
+    color: var(--color-primary);
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.payment-reference {
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+}
+
+.payment-reference-full {
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    word-break: break-all;
+    background: rgba(0, 0, 0, 0.05);
+    padding: 0.75rem;
+    border-radius: 8px;
+}
+
+[data-theme="dark"] .payment-reference-full {
+    background: rgba(255, 255, 255, 0.05);
 }
 
 /* ===== INVOICES HEADER ===== */
@@ -793,6 +917,23 @@ main {
     max-width: 600px;
     max-height: 90vh;
     overflow-y: auto;
+}
+
+/* Payment Modal - wider than invoice modal */
+.payment-modal-content {
+    max-width: 750px;
+}
+
+.payment-modal-buttons {
+    display: flex;
+    gap: 1rem;
+    margin-top: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.payment-modal-buttons .btn {
+    flex: 1;
+    min-width: 200px;
 }
 
 .invoice-modal-header {
