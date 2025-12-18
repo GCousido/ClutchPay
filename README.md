@@ -27,12 +27,18 @@ A invoice management application built with Next.js and Prisma ORM. ClutchPay al
 
 - **User Authentication**: Secure authentication system with NextAuth.js
 - **Invoice Management**: Create, update, and track invoices with PDF storage
+- **Payment Processing**: Stripe integration for secure card/bank payments
+- **Automatic Payouts**: PayPal Payouts to transfer funds to invoice issuers
+- **Notifications System**:
+  - Internal notifications with read/unread tracking
+  - Email notifications via Resend with React Email templates
 - **File Storage**: Automatic PDF and image upload to Cloudinary
 - **Multi-language Support**: Internationalization (i18n) for English and Spanish
+- **Structured Logging**: Configurable log levels (DEBUG, INFO, WARN, ERROR)
 - **Responsive Design**: Mobile-friendly interface
 - **API-First Architecture**: RESTful API with comprehensive validation
 - **Database Management**: PostgreSQL with Prisma ORM
-- **Automated Testing**: Comprehensive test suite with integration tests
+- **Automated Testing**: Comprehensive test suite with 600+ tests
 - **CI/CD Pipeline**: Automated testing on every push
 
 ---
@@ -47,8 +53,12 @@ A invoice management application built with Next.js and Prisma ORM. ClutchPay al
 - **ORM**: [Prisma](https://www.prisma.io/)
 - **Authentication**: [NextAuth.js](https://next-auth.js.org/)
 - **Validation**: [Zod](https://zod.dev/)
+- **Payments**: [Stripe](https://stripe.com/) (Checkout Sessions, Webhooks)
+- **Payouts**: [PayPal Payouts SDK](https://developer.paypal.com/docs/payouts/)
+- **Email**: [Resend](https://resend.com/) + [React Email](https://react.email/)
 - **File Storage**: [Cloudinary](https://cloudinary.com/) (Images & PDFs)
-- **Testing**: [Vitest](https://vitest.dev/)
+- **Logging**: Custom structured logger with configurable levels
+- **Testing**: [Vitest](https://vitest.dev/) (600+ tests, 93%+ coverage)
 
 ### Frontend
 

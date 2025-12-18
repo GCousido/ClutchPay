@@ -14,9 +14,12 @@ This is a full-stack Next.js application using the App Router architecture with 
 - **User Authentication**: Secure credential-based authentication with NextAuth.js
 - **User Management**: CRUD operations for user profiles and contacts
 - **Invoice Management**: Create, update, and delete invoices with PDF attachments
+- **Payment Processing**: Stripe integration for payments with PayPal payouts
+- **Notifications**: Internal notification system + email notifications via Resend
 - **File Storage**: Cloudinary integration for images and PDFs
 - **Database Operations**: PostgreSQL database with Prisma ORM
 - **Validation**: Type-safe request/response validation with Zod
+- **Logging**: Structured logging with configurable log levels
 - **Testing**: Comprehensive test suite with Vitest (unit + integration tests)
 
 ---
@@ -95,8 +98,27 @@ NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=your-cloud-name
 NEXT_PUBLIC_CLOUDINARY_API_KEY=your-api-key
 CLOUDINARY_API_SECRET=your-api-secret
 
+# Stripe (Payments)
+STRIPE_SECRET_KEY=sk_test_xxx
+STRIPE_WEBHOOK_SECRET=whsec_xxx
+STRIPE_CURRENCY=eur
+
+# PayPal (Payouts)
+PAYPAL_CLIENT_ID=your-paypal-client-id
+PAYPAL_CLIENT_SECRET=your-paypal-client-secret
+PAYPAL_MODE=sandbox  # 'sandbox' or 'live'
+
+# Email (Resend)
+RESEND_API_KEY=re_xxx
+RESEND_FROM_EMAIL=ClutchPay <noreply@clutchpay.com>
+
+# Logging
+LOG_LEVEL=INFO  # DEBUG, INFO, WARN, ERROR
+
 # Application
 NODE_ENV=development
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+FRONTEND_URL=http://localhost:80
 ```
 
 ### Prisma Schema
@@ -365,6 +387,198 @@ Content-Type: application/json
 {
   "contactId": 2
 }
+```
+
+---
+
+## 💳 Payment Processing
+
+ClutchPay implements a complete payment flow using **Stripe** for payment collection and **PayPal Payouts** for fund distribution.
+
+### Payment Flow
+
+```text
+1. Debtor → Stripe Checkout → Pays invoice via card/bank
+2. Stripe Webhook → Confirms payment success
+3. Backend → PayPal Payout → Transfers funds to issuer's PayPal
+4. Payment recorded → Invoice marked as PAID
+```
+
+### Stripe Integration
+
+- **Checkout Sessions**: Create secure payment pages for invoices
+- **Webhooks**: Handle payment events (success, failure, expiration)
+- **Session Status**: Track payment status through the lifecycle
+
+#### **Create Payment Session**
+
+```http
+POST /api/payments/stripe/checkout
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "invoiceId": 1
+}
+```
+
+**Response:**
+
+```json
+{
+  "sessionId": "cs_test_xxx",
+  "checkoutUrl": "https://checkout.stripe.com/c/pay/cs_test_xxx"
+}
+```
+
+#### **Get Payment by Invoice**
+
+```http
+GET /api/payments?invoiceId=1
+Authorization: Bearer {token}
+```
+
+### PayPal Payouts
+
+After successful Stripe payment, funds are automatically transferred to the invoice issuer via PayPal:
+
+- **Automatic Payout**: Triggered by Stripe webhook on payment success
+- **Batch Processing**: Supports single and batch payouts
+- **Status Tracking**: Monitor payout status (PENDING, SUCCESS, FAILED)
+
+### Configuration
+
+```env
+# Stripe
+STRIPE_SECRET_KEY=sk_test_xxx
+STRIPE_WEBHOOK_SECRET=whsec_xxx
+STRIPE_CURRENCY=eur
+
+# PayPal
+PAYPAL_CLIENT_ID=your-client-id
+PAYPAL_CLIENT_SECRET=your-client-secret
+PAYPAL_MODE=sandbox  # 'sandbox' or 'live'
+```
+
+---
+
+## 🔔 Notifications
+
+ClutchPay provides a dual notification system with internal notifications and external email notifications.
+
+### Notification Types
+
+| Type | Description | Email? |
+|------|-------------|--------|
+| `INVOICE_ISSUED` | New invoice issued to debtor | ✅ |
+| `PAYMENT_DUE` | Payment reminder (3 days before due) | ✅ |
+| `PAYMENT_OVERDUE` | Invoice past due date | ✅ |
+| `PAYMENT_RECEIVED` | Payment confirmed | ✅ |
+| `INVOICE_CANCELED` | Invoice canceled by issuer | ✅ |
+
+### Internal Notifications API
+
+#### **Get User Notifications**
+
+```http
+GET /api/notifications?page=1&limit=10
+Authorization: Bearer {token}
+```
+
+**Query Parameters:**
+
+- `page`: Page number (default: 1)
+- `limit`: Items per page (default: 10, max: 100)
+- `read`: Filter by read status (`true` or `false`)
+
+#### **Mark Notification as Read**
+
+```http
+PUT /api/notifications/{id}
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "read": true
+}
+```
+
+#### **Mark All as Read**
+
+```http
+PUT /api/notifications
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "readAll": true
+}
+```
+
+### Email Notifications
+
+Powered by **Resend** with **React Email** templates:
+
+- **React Email Templates**: Type-safe, styled email components
+- **Automatic Sending**: Triggered on notification creation
+- **Simulation Mode**: Works without API key in development
+
+### Email Templates
+
+Located in `src/libs/email/templates/`:
+
+- `invoice-issued.tsx` - New invoice notification
+- `payment-due.tsx` - Payment reminder
+- `payment-overdue.tsx` - Overdue warning
+- `payment-received.tsx` - Payment confirmation
+- `invoice-canceled.tsx` - Cancellation notice
+
+### Configuration
+
+```env
+RESEND_API_KEY=re_xxx
+RESEND_FROM_EMAIL=ClutchPay <noreply@clutchpay.com>
+```
+
+---
+
+## 📝 Logging
+
+ClutchPay includes a structured logging system for debugging and monitoring.
+
+### Log Levels
+
+| Level | Description | Use Case |
+|-------|-------------|----------|
+| `DEBUG` | Detailed debugging info | Development, troubleshooting |
+| `INFO` | General operations | Normal operation tracking |
+| `WARN` | Warning conditions | Non-critical issues |
+| `ERROR` | Error conditions | Failures requiring attention |
+
+### Usage
+
+```typescript
+import { logger } from '@/libs/logger';
+
+logger.debug('Payment', 'Creating checkout session', { invoiceId: 1 });
+logger.info('Server', 'Application started on port 3000');
+logger.warn('PayPal', 'Credentials not configured, using simulation');
+logger.error('Stripe', 'Webhook verification failed', error);
+```
+
+### Output Format
+
+```text
+[2024-01-15T10:30:45.123Z] [INFO] [Server] Application started on port 3000
+[2024-01-15T10:30:46.456Z] [DEBUG] [Payment] Creating checkout session | {"invoiceId":1}
+```
+
+### Configuration
+
+Set log level via environment variable:
+
+```env
+LOG_LEVEL=DEBUG  # DEBUG, INFO, WARN, ERROR (default: INFO)
 ```
 
 ---
