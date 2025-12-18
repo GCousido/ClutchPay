@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+/email-previews
 
 # next.js
 /.next/

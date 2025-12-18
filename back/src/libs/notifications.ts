@@ -1,5 +1,23 @@
-import { Invoice, NotificationType, User } from '@prisma/client';
+import { Invoice, NotificationType, Payment, User } from '@prisma/client';
 import { db } from './db';
+import { sendEmail } from './email';
+import {
+  InvoiceCanceledEmail,
+  InvoiceIssuedEmail,
+  PaymentDueEmail,
+  PaymentOverdueEmail,
+  PaymentReceivedEmail,
+} from './email/templates';
+
+/**
+ * Default currency for notifications.
+ */
+const DEFAULT_CURRENCY = 'EUR';
+
+/**
+ * Base URL for generating links in emails.
+ */
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
 /**
  * Notification message templates indexed by notification type.
@@ -14,6 +32,17 @@ const NOTIFICATION_MESSAGES: Record<NotificationType, string> = {
 };
 
 /**
+ * Email subject templates indexed by notification type.
+ */
+const EMAIL_SUBJECTS: Record<NotificationType, string> = {
+  INVOICE_ISSUED: 'New Invoice {invoiceNumber} from {issuerName}',
+  PAYMENT_DUE: 'Payment Reminder: Invoice {invoiceNumber}',
+  PAYMENT_OVERDUE: 'Urgent: Invoice {invoiceNumber} is Overdue',
+  PAYMENT_RECEIVED: 'Payment Received for Invoice {invoiceNumber}',
+  INVOICE_CANCELED: 'Invoice {invoiceNumber} Canceled',
+};
+
+/**
  * Context data for building notification messages
  */
 export interface NotificationContext {
@@ -23,6 +52,60 @@ export interface NotificationContext {
   amount?: string;
   currency?: string;
   dueDate?: string;
+}
+
+/**
+ * Extended invoice type with user relations for notification functions.
+ */
+export type InvoiceWithUsers = Invoice & {
+  issuerUser: User;
+  debtorUser: User;
+  payment?: Payment | null;
+};
+
+/**
+ * Formats a user's full name from their name and surnames.
+ *
+ * @param user - User object with name and surnames
+ * @returns Formatted full name
+ */
+function formatUserName(user: User): string {
+  return `${user.name} ${user.surnames}`;
+}
+
+/**
+ * Calculates the number of days between two dates.
+ *
+ * @param date1 - First date
+ * @param date2 - Second date
+ * @returns Number of days difference (can be negative)
+ */
+function daysDifference(date1: Date, date2: Date): number {
+  const msPerDay = 1000 * 60 * 60 * 24;
+  return Math.floor((date1.getTime() - date2.getTime()) / msPerDay);
+}
+
+/**
+ * Builds an email subject by replacing placeholders with actual values.
+ *
+ * @param type - The notification type
+ * @param context - The context data for placeholder replacement
+ * @returns The formatted email subject
+ */
+function buildEmailSubject(
+  type: NotificationType,
+  context: NotificationContext
+): string {
+  let subject = EMAIL_SUBJECTS[type];
+
+  if (context.invoiceNumber) {
+    subject = subject.replace('{invoiceNumber}', context.invoiceNumber);
+  }
+  if (context.issuerName) {
+    subject = subject.replace('{issuerName}', context.issuerName);
+  }
+
+  return subject;
 }
 
 /**
@@ -86,87 +169,220 @@ export async function createNotification(
 
 /**
  * Creates a notification when a new invoice is issued.
- * Notifies the debtor about the new invoice.
- * 
+ * Notifies the debtor about the new invoice and sends email if enabled.
+ *
  * @param invoice - The invoice that was created (with issuerUser and debtorUser relations)
  */
 export async function notifyInvoiceIssued(
-  invoice: Invoice & { issuerUser: User; debtorUser: User }
+  invoice: InvoiceWithUsers
 ) {
+  // Create in-app notification
   await createNotification(
     invoice.debtorUserId,
     invoice.id,
     NotificationType.INVOICE_ISSUED
   );
+
+  // Send email notification if user has email notifications enabled
+  if (invoice.debtorUser.emailNotifications) {
+    const context: NotificationContext = {
+      invoiceNumber: invoice.invoiceNumber,
+      issuerName: formatUserName(invoice.issuerUser),
+    };
+
+    await sendEmail({
+      to: invoice.debtorUser.email,
+      subject: buildEmailSubject(NotificationType.INVOICE_ISSUED, context),
+      react: InvoiceIssuedEmail({
+        recipientName: formatUserName(invoice.debtorUser),
+        invoiceNumber: invoice.invoiceNumber,
+        issuerName: formatUserName(invoice.issuerUser),
+        amount: invoice.amount.toString(),
+        currency: DEFAULT_CURRENCY,
+        dueDate: invoice.dueDate
+          ? new Date(invoice.dueDate).toLocaleDateString()
+          : undefined,
+        subject: invoice.subject,
+        invoiceUrl: `${APP_URL}/invoices/${invoice.id}`,
+      }),
+    });
+  }
 }
 
 /**
  * Creates a notification when a payment is received.
- * Notifies the invoice issuer about the received payment.
- * 
+ * Notifies the invoice issuer about the received payment and sends email if enabled.
+ *
  * @param invoice - The invoice that was paid (with issuerUser and debtorUser relations)
  */
 export async function notifyPaymentReceived(
-  invoice: Invoice & { issuerUser: User; debtorUser: User }
+  invoice: InvoiceWithUsers
 ) {
+  // Create in-app notification
   await createNotification(
     invoice.issuerUserId,
     invoice.id,
     NotificationType.PAYMENT_RECEIVED
   );
+
+  // Send email notification if user has email notifications enabled
+  if (invoice.issuerUser.emailNotifications) {
+    const context: NotificationContext = {
+      invoiceNumber: invoice.invoiceNumber,
+      debtorName: formatUserName(invoice.debtorUser),
+    };
+
+    const paymentDate = invoice.payment?.paymentDate
+      ? new Date(invoice.payment.paymentDate).toLocaleDateString()
+      : new Date().toLocaleDateString();
+
+    const paymentMethod = invoice.payment?.paymentMethod || 'OTHER';
+
+    await sendEmail({
+      to: invoice.issuerUser.email,
+      subject: buildEmailSubject(NotificationType.PAYMENT_RECEIVED, context),
+      react: PaymentReceivedEmail({
+        recipientName: formatUserName(invoice.issuerUser),
+        invoiceNumber: invoice.invoiceNumber,
+        payerName: formatUserName(invoice.debtorUser),
+        amount: invoice.amount.toString(),
+        currency: DEFAULT_CURRENCY,
+        paymentDate,
+        paymentMethod,
+        invoiceUrl: `${APP_URL}/invoices/${invoice.id}`,
+      }),
+    });
+  }
 }
 
 /**
  * Creates a notification when an invoice is canceled.
- * Notifies the debtor about the cancellation.
- * 
+ * Notifies the debtor about the cancellation and sends email if enabled.
+ *
  * @param invoice - The invoice that was canceled (with issuerUser and debtorUser relations)
+ * @param reason - Optional reason for the cancellation
  */
 export async function notifyInvoiceCanceled(
-  invoice: Invoice & { issuerUser: User; debtorUser: User }
+  invoice: InvoiceWithUsers,
+  reason?: string
 ) {
+  // Create in-app notification
   await createNotification(
     invoice.debtorUserId,
     invoice.id,
     NotificationType.INVOICE_CANCELED
   );
+
+  // Send email notification if user has email notifications enabled
+  if (invoice.debtorUser.emailNotifications) {
+    const context: NotificationContext = {
+      invoiceNumber: invoice.invoiceNumber,
+      issuerName: formatUserName(invoice.issuerUser),
+    };
+
+    await sendEmail({
+      to: invoice.debtorUser.email,
+      subject: buildEmailSubject(NotificationType.INVOICE_CANCELED, context),
+      react: InvoiceCanceledEmail({
+        recipientName: formatUserName(invoice.debtorUser),
+        invoiceNumber: invoice.invoiceNumber,
+        issuerName: formatUserName(invoice.issuerUser),
+        amount: invoice.amount.toString(),
+        currency: DEFAULT_CURRENCY,
+        reason,
+        dashboardUrl: `${APP_URL}/dashboard`,
+      }),
+    });
+  }
 }
 
 /**
  * Creates a notification when an invoice is approaching its due date.
- * Notifies the debtor about the upcoming payment deadline.
- * 
+ * Notifies the debtor about the upcoming payment deadline and sends email if enabled.
+ *
  * @param invoice - The invoice with upcoming due date (with issuerUser and debtorUser relations)
  */
 export async function notifyPaymentDue(
-  invoice: Invoice & { issuerUser: User; debtorUser: User }
+  invoice: InvoiceWithUsers
 ) {
+  // Create in-app notification
   await createNotification(
     invoice.debtorUserId,
     invoice.id,
     NotificationType.PAYMENT_DUE
   );
+
+  // Send email notification if user has email notifications enabled
+  if (invoice.debtorUser.emailNotifications && invoice.dueDate) {
+    const context: NotificationContext = {
+      invoiceNumber: invoice.invoiceNumber,
+      issuerName: formatUserName(invoice.issuerUser),
+    };
+
+    const daysUntilDue = daysDifference(new Date(invoice.dueDate), new Date());
+
+    await sendEmail({
+      to: invoice.debtorUser.email,
+      subject: buildEmailSubject(NotificationType.PAYMENT_DUE, context),
+      react: PaymentDueEmail({
+        recipientName: formatUserName(invoice.debtorUser),
+        invoiceNumber: invoice.invoiceNumber,
+        issuerName: formatUserName(invoice.issuerUser),
+        amount: invoice.amount.toString(),
+        currency: DEFAULT_CURRENCY,
+        dueDate: new Date(invoice.dueDate).toLocaleDateString(),
+        daysUntilDue: Math.max(0, daysUntilDue),
+        invoiceUrl: `${APP_URL}/invoices/${invoice.id}`,
+      }),
+    });
+  }
 }
 
 /**
  * Creates a notification when an invoice becomes overdue.
- * Notifies the debtor about the overdue status.
- * 
+ * Notifies the debtor about the overdue status and sends email if enabled.
+ *
  * @param invoice - The overdue invoice (with issuerUser and debtorUser relations)
  */
 export async function notifyPaymentOverdue(
-  invoice: Invoice & { issuerUser: User; debtorUser: User }
+  invoice: InvoiceWithUsers
 ) {
+  // Create in-app notification
   await createNotification(
     invoice.debtorUserId,
     invoice.id,
     NotificationType.PAYMENT_OVERDUE
   );
+
+  // Send email notification if user has email notifications enabled
+  if (invoice.debtorUser.emailNotifications && invoice.dueDate) {
+    const context: NotificationContext = {
+      invoiceNumber: invoice.invoiceNumber,
+      issuerName: formatUserName(invoice.issuerUser),
+    };
+
+    const daysOverdue = daysDifference(new Date(), new Date(invoice.dueDate));
+
+    await sendEmail({
+      to: invoice.debtorUser.email,
+      subject: buildEmailSubject(NotificationType.PAYMENT_OVERDUE, context),
+      react: PaymentOverdueEmail({
+        recipientName: formatUserName(invoice.debtorUser),
+        invoiceNumber: invoice.invoiceNumber,
+        issuerName: formatUserName(invoice.issuerUser),
+        amount: invoice.amount.toString(),
+        currency: DEFAULT_CURRENCY,
+        dueDate: new Date(invoice.dueDate).toLocaleDateString(),
+        daysOverdue: Math.max(1, daysOverdue),
+        invoiceUrl: `${APP_URL}/invoices/${invoice.id}`,
+      }),
+    });
+  }
 }
 
 /**
  * Formats a notification for API response with the constructed message.
- * 
+ *
  * @param notification - The notification from database with invoice and user relations
  * @returns Formatted notification object for API response
  */
@@ -178,7 +394,7 @@ export function formatNotificationResponse(
     type: NotificationType;
     read: boolean;
     createdAt: Date;
-    invoice: Invoice & { issuerUser: User; debtorUser: User };
+    invoice: InvoiceWithUsers;
   }
 ) {
   const { invoice } = notification;

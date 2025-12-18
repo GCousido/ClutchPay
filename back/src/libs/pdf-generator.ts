@@ -62,7 +62,7 @@ export async function generateReceiptPdf(data: ReceiptData): Promise<Buffer> {
 
     // Try to add logo with white circular background
     try {
-      const logoPath = path.join(process.cwd(), 'src', 'public', 'logo.png');
+      const logoPath = path.join(process.cwd(), 'public', 'logo.png');
       if (fs.existsSync(logoPath)) {
         const logoSize = 70;
         const logoPadding = 8;

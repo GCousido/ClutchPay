@@ -17,6 +17,11 @@ vi.mock('../../src/libs/db', () => ({
   },
 }));
 
+// Mock email service
+vi.mock('../../src/libs/email', () => ({
+  sendEmail: vi.fn().mockResolvedValue({ success: true }),
+}));
+
 describe('Notification Utility Functions', () => {
   describe('buildNotificationMessage', () => {
     const baseContext: NotificationContext = {
@@ -91,6 +96,7 @@ describe('Notification Utility Functions', () => {
       phone: '+1234567890',
       country: 'US',
       imageUrl: null,
+      emailNotifications: true,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -104,6 +110,7 @@ describe('Notification Utility Functions', () => {
       phone: '+0987654321',
       country: 'UK',
       imageUrl: null,
+      emailNotifications: true,
       createdAt: new Date(),
       updatedAt: new Date(),
     };

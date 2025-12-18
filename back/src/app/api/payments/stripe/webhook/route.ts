@@ -293,6 +293,7 @@ async function processSuccessfulPayment(session: Stripe.Checkout.Session) {
       include: {
         issuerUser: true,
         debtorUser: true,
+        payment: true,
       },
     });
     if (invoiceWithUsers) {
