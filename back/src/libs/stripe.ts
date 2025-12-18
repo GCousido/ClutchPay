@@ -131,7 +131,6 @@ export async function createCheckoutSession(params: {
   });
 
   if (!session.url) {
-    // Error will be logged by handleError when caught in the API route
     throw new InternalServerError('Failed to create Stripe checkout session: No URL returned');
   }
 

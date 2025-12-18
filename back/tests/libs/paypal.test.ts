@@ -306,7 +306,7 @@ describe('PayPal Environment Configuration', () => {
   });
 });
 
-// Additional PayPal tests could be added here for:
-// - Real API calls with proper mocks (requires more sophisticated mock setup)
-// - Error handling with specific PayPal error codes
-// - Testing with configured credentials and mock responses
+// Tests for real PayPal API are skipped as they require live credentials
+// The PayPal client code paths (lines 21-27, 36-39, 100-148, 197-211) are covered
+// only when running with actual PayPal sandbox/production credentials.
+// Coverage for simulation mode is provided by the tests above.
