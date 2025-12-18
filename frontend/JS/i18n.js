@@ -216,6 +216,22 @@ const MESSAGES = {
             paymentCanceled: "Pago cancelado",
             paymentPending: "El pago está siendo procesado"
         },
+        payments: {
+            title: "Mis Pagos",
+            loading: "Cargando pagos...",
+            noPayments: "No tienes pagos",
+            noPaymentsDesc: "Cuando realices pagos, aparecerán aquí",
+            paymentDate: "Fecha de pago",
+            reference: "Referencia",
+            receipt: "Recibo",
+            downloadReceipt: "Descargar Recibo",
+            paymentDetails: "Detalles del Pago",
+            subject: "Concepto",
+            payer: "Pagador",
+            receiver: "Receptor",
+            sortPaymentDate: "Fecha de pago",
+            errorLoading: "Error al cargar los pagos"
+        },
         general: {
             welcome: "Bienvenido a ClutchPay",
             logout: "Cerrar sesión",
@@ -225,6 +241,7 @@ const MESSAGES = {
             back: "Volver al inicio",
             languages: "Idiomas",
             cancel: "Cancelar",
+            close: "Cerrar",
             loading: "Cargando..."
         },
     },
@@ -408,6 +425,22 @@ const MESSAGES = {
             paymentCanceled: "Payment canceled",
             paymentPending: "Payment is being processed"
         },
+        payments: {
+            title: "My Payments",
+            loading: "Loading payments...",
+            noPayments: "You have no payments",
+            noPaymentsDesc: "When you make payments, they will appear here",
+            paymentDate: "Payment date",
+            reference: "Reference",
+            receipt: "Receipt",
+            downloadReceipt: "Download Receipt",
+            paymentDetails: "Payment Details",
+            subject: "Subject",
+            payer: "Payer",
+            receiver: "Receiver",
+            sortPaymentDate: "Payment date",
+            errorLoading: "Error loading payments"
+        },
         general: {
             welcome: "Welcome to ClutchPay",
             logout: "Logout",
@@ -417,6 +450,7 @@ const MESSAGES = {
             back: "Back to home",
             languages: "Languages",
             cancel: "Cancel",
+            close: "Close",
             loading: "Loading..."
         },
     }

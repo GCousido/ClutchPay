@@ -232,11 +232,54 @@ class DashboardInvoices {
             );
             if (issuerResponse.ok) {
                 const issuer = await issuerResponse.json();
-                issuerInfo = `${issuer.name || issuer.email}`;
+                issuerInfo = issuer.name && issuer.surnames 
+                    ? `${issuer.name} ${issuer.surnames}` 
+                    : (issuer.name || issuer.email);
             }
         } catch (error) {
             console.error('Error loading issuer info:', error);
             issuerInfo = 'No disponible';
+        }
+        
+        // Load debtor/receiver information
+        let debtorInfo = 'Loading...';
+        try {
+            const debtorResponse = await fetch(
+                `${this.core.authInstance.API_BASE_URL}/api/users/${invoice.debtorUserId}`,
+                { credentials: 'include' }
+            );
+            if (debtorResponse.ok) {
+                const debtor = await debtorResponse.json();
+                debtorInfo = debtor.name && debtor.surnames 
+                    ? `${debtor.name} ${debtor.surnames}` 
+                    : (debtor.name || debtor.email);
+            }
+        } catch (error) {
+            console.error('Error loading debtor info:', error);
+            debtorInfo = 'No disponible';
+        }
+        
+        // Load payment receipt if invoice is paid
+        let receiptPdfUrl = null;
+        if (invoice.status === 'PAID') {
+            try {
+                // Try both roles to ensure we get the payment regardless of user role
+                const [payerPayments, receiverPayments] = await Promise.all([
+                    fetch(`${this.core.authInstance.API_BASE_URL}/api/payments?role=payer&limit=1000`, { credentials: 'include' })
+                        .then(res => res.ok ? res.json() : { data: [] }),
+                    fetch(`${this.core.authInstance.API_BASE_URL}/api/payments?role=receiver&limit=1000`, { credentials: 'include' })
+                        .then(res => res.ok ? res.json() : { data: [] })
+                ]);
+                
+                const allPayments = [...payerPayments.data, ...receiverPayments.data];
+                const payment = allPayments.find(p => p.invoiceId === invoice.id);
+                
+                if (payment && payment.receiptPdfUrl && payment.receiptPdfUrl !== 'unavailable') {
+                    receiptPdfUrl = payment.receiptPdfUrl;
+                }
+            } catch (error) {
+                console.error('Error loading payment receipt:', error);
+            }
         }
         
         const modalHTML = `
@@ -258,6 +301,11 @@ class DashboardInvoices {
                         <div class="invoice-modal-section">
                             <h3 data-i18n="invoices.issuer">Emisor</h3>
                             <p>${issuerInfo}</p>
+                        </div>
+                        
+                        <div class="invoice-modal-section">
+                            <h3 data-i18n="invoices.recipient">Receptor</h3>
+                            <p>${debtorInfo}</p>
                         </div>
                         
                         <div class="invoice-modal-section">
@@ -301,8 +349,33 @@ class DashboardInvoices {
                             <h3 data-i18n="invoices.pdfDocument">Documento PDF</h3>
                             <div>
                                 <button id="download-pdf-btn" class="btn btn-primary" data-pdf-url="${invoice.invoicePdfUrl}" data-invoice-number="${invoice.invoiceNumber}">
-                                    📄 <span data-i18n="invoices.downloadPdf">Descargar PDF</span>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                        <polyline points="14 2 14 8 20 8"/>
+                                        <line x1="16" y1="13" x2="8" y2="13"/>
+                                        <line x1="16" y1="17" x2="8" y2="17"/>
+                                        <polyline points="10 9 9 9 8 9"/>
+                                    </svg>
+                                    <span data-i18n="invoices.downloadPdf">Descargar PDF</span>
                                 </button>
+                            </div>
+                        </div>
+                        ` : ''}
+                        
+                        ${receiptPdfUrl ? `
+                        <div class="invoice-modal-section">
+                            <h3 data-i18n="payments.receipt">Recibo de Pago</h3>
+                            <div>
+                                <a href="${receiptPdfUrl}" target="_blank" class="btn btn-primary">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                        <polyline points="14 2 14 8 20 8"/>
+                                        <line x1="16" y1="13" x2="8" y2="13"/>
+                                        <line x1="16" y1="17" x2="8" y2="17"/>
+                                        <polyline points="10 9 9 9 8 9"/>
+                                    </svg>
+                                    <span data-i18n="payments.downloadReceipt">Descargar Recibo</span>
+                                </a>
                             </div>
                         </div>
                         ` : ''}
