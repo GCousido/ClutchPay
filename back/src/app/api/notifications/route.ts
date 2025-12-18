@@ -1,5 +1,6 @@
 import { handleError, requireAuth, validateBody } from '@/libs/api-helpers';
 import { db } from '@/libs/db';
+import { logger } from '@/libs/logger';
 import { formatNotificationResponse } from '@/libs/notifications';
 import {
     notificationBulkDeleteSchema,
@@ -28,6 +29,8 @@ import { NextResponse } from 'next/server';
 export async function GET(request: Request) {
   try {
     const user = await requireAuth();
+
+    logger.debug('Notifications', 'GET /api/notifications - Listing notifications', { userId: user.id });
     
     const url = new URL(request.url);
     const searchParams = Object.fromEntries(url.searchParams);
@@ -109,6 +112,9 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const user = await requireAuth();
+
+    logger.debug('Notifications', 'PATCH /api/notifications - Bulk marking as read', { userId: user.id });
+
     const body = await request.json();
     const data = validateBody(notificationBulkReadSchema, body);
 
@@ -121,6 +127,7 @@ export async function PATCH(request: Request) {
         data: { read: true },
       });
       updatedCount = result.count;
+      logger.debug('Notifications', 'All notifications marked as read', { userId: user.id, updatedCount });
     } else if (data.notificationIds) {
       // Mark specific notifications as read (only if they belong to the user)
       const result = await db.notification.updateMany({
@@ -131,6 +138,7 @@ export async function PATCH(request: Request) {
         data: { read: true },
       });
       updatedCount = result.count;
+      logger.debug('Notifications', 'Specific notifications marked as read', { userId: user.id, notificationIds: data.notificationIds, updatedCount });
     }
 
     return NextResponse.json({
@@ -158,6 +166,9 @@ export async function PATCH(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const user = await requireAuth();
+
+    logger.debug('Notifications', 'DELETE /api/notifications - Bulk deleting', { userId: user.id });
+
     const body = await request.json();
     const data = validateBody(notificationBulkDeleteSchema, body);
 
@@ -169,6 +180,7 @@ export async function DELETE(request: Request) {
         where: { userId: user.id, read: true },
       });
       deletedCount = result.count;
+      logger.debug('Notifications', 'All read notifications deleted', { userId: user.id, deletedCount });
     } else if (data.notificationIds) {
       // Delete specific notifications (only if they belong to the user)
       const result = await db.notification.deleteMany({
@@ -178,6 +190,7 @@ export async function DELETE(request: Request) {
         },
       });
       deletedCount = result.count;
+      logger.debug('Notifications', 'Specific notifications deleted', { userId: user.id, notificationIds: data.notificationIds, deletedCount });
     }
 
     return NextResponse.json({

@@ -1,6 +1,7 @@
 // app/api/payments/stripe/checkout/route.ts
 import { BadRequestError, ForbiddenError, handleError, NotFoundError, requireAuth, validateBody } from '@/libs/api-helpers';
 import { db } from '@/libs/db';
+import { logger } from '@/libs/logger';
 import { createCheckoutSession, toCents } from '@/libs/stripe';
 import { stripeCheckoutCreateSchema } from '@/libs/validations/stripe';
 import { InvoiceStatus } from '@prisma/client';
@@ -39,6 +40,8 @@ import { NextResponse } from 'next/server';
 export async function POST(request: Request) {
   try {
     const sessionUser = await requireAuth();
+
+    logger.debug('Stripe', 'POST /api/payments/stripe/checkout - Creating checkout session', { userId: sessionUser.id });
 
     const body = await request.json();
     const parsed = validateBody(stripeCheckoutCreateSchema, body);
@@ -112,6 +115,12 @@ export async function POST(request: Request) {
       receiverEmail: invoice.issuerUser.email,
       successUrl: parsed.successUrl,
       cancelUrl: parsed.cancelUrl,
+    });
+
+    logger.info('Stripe', 'Checkout session created', { 
+      sessionId: checkoutSession.sessionId, 
+      invoiceId: invoice.id, 
+      amount: invoice.amount.toString() 
     });
 
     return NextResponse.json({

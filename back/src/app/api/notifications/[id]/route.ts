@@ -1,5 +1,6 @@
 import { handleError, NotFoundError, requireAuth, requireSameUser, validateBody } from '@/libs/api-helpers';
 import { db } from '@/libs/db';
+import { logger } from '@/libs/logger';
 import { formatNotificationResponse } from '@/libs/notifications';
 import {
     notificationIdParamSchema,
@@ -32,6 +33,8 @@ export async function GET(
     const user = await requireAuth();
     const { id: idParam } = await params;
     const { id } = notificationIdParamSchema.parse({ id: idParam });
+
+    logger.debug('Notifications', 'GET /api/notifications/:id - Fetching notification', { notificationId: id, requestedBy: user.id });
 
     const notification = await db.notification.findUnique({
       where: { id },
@@ -82,6 +85,8 @@ export async function PATCH(
     const user = await requireAuth();
     const { id: idParam } = await params;
     const { id } = notificationIdParamSchema.parse({ id: idParam });
+
+    logger.debug('Notifications', 'PATCH /api/notifications/:id - Updating notification', { notificationId: id, requestedBy: user.id });
 
     // Check if notification exists and belongs to user
     const existingNotification = await db.notification.findUnique({
@@ -139,6 +144,8 @@ export async function DELETE(
     const user = await requireAuth();
     const { id: idParam } = await params;
     const { id } = notificationIdParamSchema.parse({ id: idParam });
+
+    logger.debug('Notifications', 'DELETE /api/notifications/:id - Deleting notification', { notificationId: id, requestedBy: user.id });
 
     // Check if notification exists and belongs to user
     const existingNotification = await db.notification.findUnique({

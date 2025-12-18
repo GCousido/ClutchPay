@@ -1,6 +1,7 @@
 // app/api/payments/[id]/route.ts
 import { BadRequestError, ForbiddenError, handleError, NotFoundError, requireAuth } from '@/libs/api-helpers';
 import { db } from '@/libs/db';
+import { logger } from '@/libs/logger';
 import { NextResponse } from 'next/server';
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -50,6 +51,9 @@ export async function GET(request: Request, context: RouteParams) {
 		const { id } = await context.params;
 
 		const paymentId = parseInt(id, 10);
+
+		logger.debug('Payments', 'GET /api/payments/:id - Fetching payment details', { paymentId, requestedBy: sessionUser.id });
+
 		if (isNaN(paymentId) || paymentId <= 0) {
 			throw new BadRequestError('Cannot parse payment ID');
 		}

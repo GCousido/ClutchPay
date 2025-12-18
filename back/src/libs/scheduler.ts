@@ -5,6 +5,7 @@ import {
   checkAndNotifyPaymentOverdue,
   cleanupOldReadNotifications,
 } from './notifications';
+import { logger } from './logger';
 
 /**
  * Starts all scheduled tasks for the application.
@@ -16,41 +17,46 @@ import {
  * - Cleanup old notifications: Weekly on Sundays at 2:00 AM
  */
 export function startScheduler() {
-  console.log('[Scheduler] Starting scheduled tasks...');
+  logger.info('Scheduler', 'Starting scheduled tasks');
 
   // Check for invoices due soon (within 3 days) - Daily at 9:00 AM
   cron.schedule('0 9 * * *', async () => {
-    console.log('[Scheduler] Running payment due check...');
+    logger.info('Scheduler', 'Running payment due check');
     try {
-      await checkAndNotifyPaymentDue(3);
+      const count = await checkAndNotifyPaymentDue(3);
+      logger.info('Scheduler', 'Payment due check completed', { notificationsSent: count });
     } catch (error) {
-      console.error('[Scheduler] Error checking payment due:', error);
+      logger.error('Scheduler', 'Error checking payment due', error);
     }
   });
 
   // Check for overdue invoices - Daily at 9:00 AM
   cron.schedule('0 9 * * *', async () => {
-    console.log('[Scheduler] Running payment overdue check...');
+    logger.info('Scheduler', 'Running payment overdue check');
     try {
-      await checkAndNotifyPaymentOverdue();
+      const count = await checkAndNotifyPaymentOverdue();
+      logger.info('Scheduler', 'Payment overdue check completed', { notificationsSent: count });
     } catch (error) {
-      console.error('[Scheduler] Error checking payment overdue:', error);
+      logger.error('Scheduler', 'Error checking payment overdue', error);
     }
   });
 
   // Cleanup old read notifications (older than 60 days) - Weekly on Sundays at 2:00 AM
   cron.schedule('0 2 * * 0', async () => {
-    console.log('[Scheduler] Running notification cleanup...');
+    logger.info('Scheduler', 'Running notification cleanup');
     try {
       const count = await cleanupOldReadNotifications(60);
-      console.log(`[Scheduler] Deleted ${count} old read notifications`);
+      logger.info('Scheduler', 'Notification cleanup completed', { deletedCount: count });
     } catch (error) {
-      console.error('[Scheduler] Error cleaning up notifications:', error);
+      logger.error('Scheduler', 'Error cleaning up notifications', error);
     }
   });
 
-  console.log('[Scheduler] All scheduled tasks started successfully');
-  console.log('  - Payment due check: Daily at 9:00 AM');
-  console.log('  - Payment overdue check: Daily at 9:00 AM');
-  console.log('  - Notification cleanup: Sundays at 2:00 AM (60 days old)');
+  logger.info('Scheduler', 'All scheduled tasks registered', {
+    tasks: [
+      { name: 'paymentDueCheck', schedule: 'Daily at 9:00 AM' },
+      { name: 'paymentOverdueCheck', schedule: 'Daily at 9:00 AM' },
+      { name: 'notificationCleanup', schedule: 'Sundays at 2:00 AM' },
+    ]
+  });
 }

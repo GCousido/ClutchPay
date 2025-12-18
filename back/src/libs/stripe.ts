@@ -1,5 +1,6 @@
 // libs/stripe.ts
 import { InternalServerError } from '@/libs/api-helpers';
+import { logger } from '@/libs/logger';
 import Stripe from 'stripe';
 
 /**
@@ -95,6 +96,8 @@ export async function createCheckoutSession(params: {
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
+  logger.debug('Stripe', 'Creating checkout session', { invoiceId, invoiceNumber, amount, currency, payerId, receiverId });
+
   // Create Stripe Checkout Session
   // Currently configured to use PayPal as the only payment method
   const session = await stripe.checkout.sessions.create({
@@ -128,8 +131,11 @@ export async function createCheckoutSession(params: {
   });
 
   if (!session.url) {
+    // Error will be logged by handleError when caught in the API route
     throw new InternalServerError('Failed to create Stripe checkout session: No URL returned');
   }
+
+  logger.debug('Stripe', 'Checkout session created', { sessionId: session.id, invoiceId });
 
   return {
     sessionId: session.id,

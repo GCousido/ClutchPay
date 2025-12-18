@@ -1,5 +1,6 @@
 // libs/cloudinary.ts
 import { InternalServerError } from '@/libs/api-helpers';
+import { logger } from '@/libs/logger';
 import { v2 as cloudinary } from 'cloudinary';
 
 // Configure Cloudinary
@@ -33,7 +34,7 @@ export async function uploadImage(base64Image: string, folder = 'ClutchPay/profi
       publicId: result.public_id,
     };
   } catch (error) {
-    console.error('Cloudinary upload error:', error);
+    logger.error('Cloudinary', 'Image upload failed', error);
     throw new InternalServerError('Failed to upload image to Cloudinary');
   }
 }
@@ -54,7 +55,7 @@ export async function deleteImage(publicId: string) {
     
     return result;
   } catch (error) {
-    console.error('Cloudinary delete error:', error);
+    logger.error('Cloudinary', 'Image delete failed', error);
     throw new InternalServerError('Failed to delete image from Cloudinary');
   }
 }
@@ -97,7 +98,7 @@ export async function uploadPdf(base64Pdf: string, folder = 'ClutchPay/invoices'
       publicId: result.public_id,
     };
   } catch (error) {
-    console.error('Cloudinary PDF upload error:', error);
+    logger.error('Cloudinary', 'PDF upload failed', error);
     throw new InternalServerError('Failed to upload PDF to Cloudinary');
   }
 }
@@ -120,7 +121,7 @@ export async function deletePdf(publicId: string) {
 
     return result;
   } catch (error) {
-    console.error('Cloudinary PDF delete error:', error);
+    logger.error('Cloudinary', 'PDF delete failed', error);
     throw new InternalServerError('Failed to delete PDF from Cloudinary');
   }
 }

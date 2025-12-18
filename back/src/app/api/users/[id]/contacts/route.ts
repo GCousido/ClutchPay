@@ -1,6 +1,7 @@
 // app/api/users/[id]/contacts/route.ts
 import { BadRequestError, getPagination, handleError, NotFoundError, requireAuth, requireSameUser } from '@/libs/api-helpers';
 import { db } from '@/libs/db';
+import { logger } from '@/libs/logger';
 import { addContactSchema } from '@/libs/validations';
 import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
@@ -28,6 +29,9 @@ export async function GET(request: Request) {
     }
 
     const userId = Number(m[1]);
+
+    logger.debug('Contacts', 'GET /api/users/:id/contacts - Listing contacts', { userId, requestedBy: sessionUser.id });
+
     if (Number.isNaN(userId)) {
       throw new BadRequestError('Cannot parse user id');
     }
@@ -107,6 +111,9 @@ export async function DELETE(request: Request) {
       throw new BadRequestError('Cannot parse user id in path');
     }
     const userId = Number(m[1]);
+
+    logger.debug('Contacts', 'DELETE /api/users/:id/contacts - Removing contact', { userId, requestedBy: sessionUser.id });
+
     if (Number.isNaN(userId)) {
       throw new BadRequestError('Cannot parse user id');
     }
@@ -149,6 +156,8 @@ export async function DELETE(request: Request) {
       },
     });
 
+    logger.info('Contacts', 'Contact removed successfully', { userId, contactId });
+
     return NextResponse.json({ message: 'Contact removed successfully' }, { status: 200 });
   } catch (error) {
     return handleError(error);
@@ -176,6 +185,9 @@ export async function POST(request: Request) {
       throw new BadRequestError('Cannot parse user id');
     }
     const userId = Number(m[1]);
+
+    logger.debug('Contacts', 'POST /api/users/:id/contacts - Adding contact', { userId, requestedBy: sessionUser.id });
+
     if (Number.isNaN(userId)) {
       throw new BadRequestError('Cannot parse user id');
     }
@@ -232,6 +244,7 @@ export async function POST(request: Request) {
 
       // return the connected contact info
       const added = updated.contacts?.[0] ?? null;
+      logger.info('Contacts', 'Contact added successfully', { userId, contactId, contactEmail: added?.email });
       return NextResponse.json({ message: 'Contact added', data: added }, { status: 201 });
     } catch (error: any) {
       // handle unique constraint / already connected

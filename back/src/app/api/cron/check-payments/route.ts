@@ -1,5 +1,6 @@
 // app/api/cron/check-payments/route.ts
 import { handleError } from '@/libs/api-helpers';
+import { logger } from '@/libs/logger';
 import {
     checkAndNotifyPaymentDue,
     checkAndNotifyPaymentOverdue,
@@ -66,6 +67,8 @@ import { NextResponse } from 'next/server';
  */
 export async function GET(request: Request) {
   try {
+    logger.debug('Cron', 'GET /api/cron/check-payments - Running scheduled tasks');
+
     // Verify authorization in production
     const isProduction = process.env.NODE_ENV === 'production';
     const cronSecret = process.env.CRON_SECRET;
@@ -74,6 +77,7 @@ export async function GET(request: Request) {
       const authHeader = request.headers.get('x-cron-secret');
       
       if (!authHeader || authHeader !== cronSecret) {
+        logger.warn('Cron', 'Unauthorized cron access attempt');
         return NextResponse.json(
           { error: 'Unauthorized' },
           { status: 401 }
@@ -100,6 +104,8 @@ export async function GET(request: Request) {
       const cleanupCount = await cleanupOldReadNotifications(60);
       results.cleanupOldNotifications = cleanupCount;
     }
+
+    logger.info('Cron', 'Scheduled tasks completed', { task: task || 'all', results });
 
     return NextResponse.json({
       success: true,

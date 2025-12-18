@@ -1,5 +1,6 @@
 // libs/auth.ts
 import { db } from '@/libs/db';
+import { logger } from '@/libs/logger';
 import bcrypt from 'bcryptjs';
 import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
@@ -23,7 +24,7 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         // Validate credentials
         if (!credentials?.email || !credentials?.password) {
-          console.log('Missing email or password in credentials');
+          logger.warn('Auth', 'Login attempt with missing credentials');
           return null;
         }
 
@@ -44,7 +45,7 @@ export const authOptions: NextAuthOptions = {
 
         // Verify user exists
         if (!user) {
-          console.log('User not found with email:', credentials.email);
+          logger.warn('Auth', 'Login failed - user not found', { email: credentials.email });
           return null;
         }
 
@@ -55,9 +56,11 @@ export const authOptions: NextAuthOptions = {
         );
 
         if (!isPasswordValid) {
-          console.log('Invalid password for email:', credentials.email);
+          logger.warn('Auth', 'Login failed - invalid password', { email: credentials.email, userId: user.id });
           return null;
         }
+
+        logger.info('Auth', 'User logged in successfully', { userId: user.id, email: user.email });
 
         // Return User for session
         return {

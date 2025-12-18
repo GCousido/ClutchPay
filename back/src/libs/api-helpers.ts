@@ -1,5 +1,6 @@
 // libs/api-helpers.ts
 import { authOptions } from '@/libs/auth';
+import { logger } from '@/libs/logger';
 import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
 import { ZodError, ZodType } from 'zod';
@@ -83,7 +84,7 @@ export function requireSameUser(sessionUserId: number, targetUserId: number) {
  * - 500 for InternalServerError or unknown errors
  */
 export function handleError(error: unknown) {
-  console.error(error);
+  logger.error('API', 'Request error', error);
   
   if (error instanceof ZodError) {
     const formatted: Record<string, string> = {};

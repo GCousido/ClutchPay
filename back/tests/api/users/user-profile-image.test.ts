@@ -176,8 +176,7 @@ describe('User Profile Image Management', () => {
 
       expect(response.status).toBe(200);
       expect(consoleSpy).toHaveBeenCalledWith(
-        'Failed to delete old image:',
-        expect.any(Error)
+        expect.stringContaining('[WARN] [User] Failed to delete old profile image')
       );
       
       consoleSpy.mockRestore();

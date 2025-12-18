@@ -1,4 +1,5 @@
 // libs/email/index.ts
+import { logger } from '@/libs/logger';
 import { Resend } from 'resend';
 
 /**
@@ -70,7 +71,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
   // If Resend is not configured, simulate email sending (development/testing mode)
   if (!resend) {
     const componentName = typeof react?.type === 'function' ? react.type.name : 'Unknown';
-    console.log('[Email] SIMULATED email (Resend not configured):', {
+    logger.info('Email', 'SIMULATED email (Resend not configured)', {
       to,
       subject,
       component: componentName,
@@ -90,7 +91,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     });
 
     if (error) {
-      console.error('[Email] Failed to send email:', error);
+      logger.error('Email', 'Failed to send email', { to, subject, error: error.message });
       return {
         success: false,
         error: error.message,
@@ -103,7 +104,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[Email] Exception while sending email:', errorMessage);
+    logger.error('Email', 'Exception while sending email', { to, subject, error: errorMessage });
     return {
       success: false,
       error: errorMessage,

@@ -1,6 +1,7 @@
 // app/api/payments/stripe/session/[sessionId]/route.ts
 import { BadRequestError, ForbiddenError, handleError, NotFoundError, requireAuth } from '@/libs/api-helpers';
 import { db } from '@/libs/db';
+import { logger } from '@/libs/logger';
 import { fromCents, getCheckoutSession, mapSessionStatus, StripePaymentMetadata } from '@/libs/stripe';
 import { NextResponse } from 'next/server';
 
@@ -38,6 +39,8 @@ export async function GET(request: Request, { params }: RouteParams) {
   try {
     const sessionUser = await requireAuth();
     const { sessionId } = await params;
+
+    logger.debug('Stripe', 'GET /api/payments/stripe/session/:sessionId - Fetching session status', { sessionId, requestedBy: sessionUser.id });
 
     // Validate session ID format
     if (!sessionId || !sessionId.startsWith('cs_')) {

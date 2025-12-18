@@ -2,6 +2,7 @@
 import { BadRequestError, ForbiddenError, getPagination, handleError, NotFoundError, requireAuth, validateBody } from '@/libs/api-helpers';
 import { getSignedPdfUrl, uploadPdf } from '@/libs/cloudinary';
 import { db } from '@/libs/db';
+import { logger } from '@/libs/logger';
 import { notifyInvoiceIssued } from '@/libs/notifications';
 import { invoiceCreateSchema, invoiceListQuerySchema } from '@/libs/validations/invoice';
 import { Prisma } from '@prisma/client';
@@ -18,6 +19,8 @@ import { NextResponse } from 'next/server';
 export async function GET(request: Request) {
 	try {
 		const sessionUser = await requireAuth();
+
+		logger.debug('Invoices', 'GET /api/invoices - Listing invoices', { userId: sessionUser.id });
 
 		const searchParams = new URL(request.url).searchParams;
 		const filters = invoiceListQuerySchema.parse(Object.fromEntries(searchParams));
@@ -96,6 +99,8 @@ export async function GET(request: Request) {
 				: null
 		}));
 
+		logger.debug('Invoices', 'Invoices list retrieved', { total, page, role: filters.role });
+
 		return NextResponse.json({
 			meta: {
 				total,
@@ -125,6 +130,8 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
 	try {
 		const sessionUser = await requireAuth();
+
+		logger.debug('Invoices', 'POST /api/invoices - Creating invoice', { issuerId: sessionUser.id });
 
 		const body = await request.json();
 		const parsed = validateBody(invoiceCreateSchema, body);
@@ -174,11 +181,19 @@ export async function POST(request: Request) {
 			await notifyInvoiceIssued(invoice);
 		} catch (notificationError) {
 			// Log but don't fail the request if notification creation fails
-			console.error('[Invoice Create] Failed to create notification:', notificationError);
+			logger.error('Invoice', 'Failed to create notification on invoice create', notificationError);
 		}
 
 		// Return only the invoice data without user relations
 		const { issuerUser, debtorUser, ...invoiceData } = invoice;
+
+		logger.info('Invoices', 'Invoice created successfully', { 
+			invoiceId: invoice.id, 
+			invoiceNumber: invoice.invoiceNumber,
+			issuerId: invoice.issuerUserId,
+			debtorId: invoice.debtorUserId,
+			amount: invoice.amount.toString()
+		});
 
 		return NextResponse.json(invoiceData, { status: 201 });
 	} catch (error) {

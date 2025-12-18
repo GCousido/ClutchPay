@@ -8,6 +8,7 @@ import {
   PaymentOverdueEmail,
   PaymentReceivedEmail,
 } from './email/templates';
+import { logger } from './logger';
 
 /**
  * Default currency for notifications (from STRIPE_CURRENCY env or EUR).
@@ -182,6 +183,11 @@ export async function notifyInvoiceIssued(
     invoice.id,
     NotificationType.INVOICE_ISSUED
   );
+  logger.info('Notification', 'Invoice issued notification created', {
+    invoiceId: invoice.id,
+    invoiceNumber: invoice.invoiceNumber,
+    debtorId: invoice.debtorUserId,
+  });
 
   // Send email notification if user has email notifications enabled
   if (invoice.debtorUser.emailNotifications) {
@@ -206,6 +212,10 @@ export async function notifyInvoiceIssued(
         invoiceUrl: `${APP_URL}/invoices/${invoice.id}`,
       }),
     });
+    logger.info('Email', 'Invoice issued email sent', {
+      to: invoice.debtorUser.email,
+      invoiceNumber: invoice.invoiceNumber,
+    });
   }
 }
 
@@ -224,6 +234,11 @@ export async function notifyPaymentReceived(
     invoice.id,
     NotificationType.PAYMENT_RECEIVED
   );
+  logger.info('Notification', 'Payment received notification created', {
+    invoiceId: invoice.id,
+    invoiceNumber: invoice.invoiceNumber,
+    issuerId: invoice.issuerUserId,
+  });
 
   // Send email notification if user has email notifications enabled
   if (invoice.issuerUser.emailNotifications) {
@@ -252,6 +267,10 @@ export async function notifyPaymentReceived(
         invoiceUrl: `${APP_URL}/invoices/${invoice.id}`,
       }),
     });
+    logger.info('Email', 'Payment received email sent', {
+      to: invoice.issuerUser.email,
+      invoiceNumber: invoice.invoiceNumber,
+    });
   }
 }
 
@@ -272,6 +291,12 @@ export async function notifyInvoiceCanceled(
     invoice.id,
     NotificationType.INVOICE_CANCELED
   );
+  logger.info('Notification', 'Invoice canceled notification created', {
+    invoiceId: invoice.id,
+    invoiceNumber: invoice.invoiceNumber,
+    debtorId: invoice.debtorUserId,
+    reason,
+  });
 
   // Send email notification if user has email notifications enabled
   if (invoice.debtorUser.emailNotifications) {
@@ -293,6 +318,10 @@ export async function notifyInvoiceCanceled(
         dashboardUrl: `${APP_URL}/dashboard`,
       }),
     });
+    logger.info('Email', 'Invoice canceled email sent', {
+      to: invoice.debtorUser.email,
+      invoiceNumber: invoice.invoiceNumber,
+    });
   }
 }
 
@@ -311,6 +340,12 @@ export async function notifyPaymentDue(
     invoice.id,
     NotificationType.PAYMENT_DUE
   );
+  logger.info('Notification', 'Payment due notification created', {
+    invoiceId: invoice.id,
+    invoiceNumber: invoice.invoiceNumber,
+    debtorId: invoice.debtorUserId,
+    dueDate: invoice.dueDate,
+  });
 
   // Send email notification if user has email notifications enabled
   if (invoice.debtorUser.emailNotifications && invoice.dueDate) {
@@ -335,6 +370,11 @@ export async function notifyPaymentDue(
         invoiceUrl: `${APP_URL}/invoices/${invoice.id}`,
       }),
     });
+    logger.info('Email', 'Payment due email sent', {
+      to: invoice.debtorUser.email,
+      invoiceNumber: invoice.invoiceNumber,
+      daysUntilDue,
+    });
   }
 }
 
@@ -353,6 +393,12 @@ export async function notifyPaymentOverdue(
     invoice.id,
     NotificationType.PAYMENT_OVERDUE
   );
+  logger.info('Notification', 'Payment overdue notification created', {
+    invoiceId: invoice.id,
+    invoiceNumber: invoice.invoiceNumber,
+    debtorId: invoice.debtorUserId,
+    dueDate: invoice.dueDate,
+  });
 
   // Send email notification if user has email notifications enabled
   if (invoice.debtorUser.emailNotifications && invoice.dueDate) {
@@ -376,6 +422,11 @@ export async function notifyPaymentOverdue(
         daysOverdue: Math.max(1, daysOverdue),
         invoiceUrl: `${APP_URL}/invoices/${invoice.id}`,
       }),
+    });
+    logger.info('Email', 'Payment overdue email sent', {
+      to: invoice.debtorUser.email,
+      invoiceNumber: invoice.invoiceNumber,
+      daysOverdue,
     });
   }
 }
@@ -491,11 +542,11 @@ export async function checkAndNotifyPaymentDue(daysBeforeDue: number = 3): Promi
       await notifyPaymentDue(invoice);
       count++;
     } catch (error) {
-      console.error(`[Scheduler] Failed to notify payment due for invoice ${invoice.id}:`, error);
+      logger.error('Scheduler', `Failed to notify payment due for invoice ${invoice.id}`, error);
     }
   }
 
-  console.log(`[Scheduler] Checked payment due: ${count} notifications sent`);
+  logger.info('Scheduler', 'Payment due check completed', { notificationsSent: count });
   return count;
 }
 
@@ -542,10 +593,10 @@ export async function checkAndNotifyPaymentOverdue(): Promise<number> {
       await notifyPaymentOverdue(invoice);
       count++;
     } catch (error) {
-      console.error(`[Scheduler] Failed to notify payment overdue for invoice ${invoice.id}:`, error);
+      logger.error('Scheduler', `Failed to notify payment overdue for invoice ${invoice.id}`, error);
     }
   }
 
-  console.log(`[Scheduler] Checked payment overdue: ${count} notifications sent`);
+  logger.info('Scheduler', 'Payment overdue check completed', { notificationsSent: count });
   return count;
 }

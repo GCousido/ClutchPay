@@ -1,6 +1,7 @@
 // app/api/auth/register/route.ts
 import { BadRequestError, handleError } from "@/libs/api-helpers";
 import { db } from "@/libs/db";
+import { logger } from "@/libs/logger";
 import { userCreateSchema } from '@/libs/validations/user';
 import { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
@@ -16,6 +17,7 @@ import { NextResponse } from "next/server";
  */
 export async function POST(request: Request) {
   try {
+    logger.debug('Auth', 'POST /api/auth/register - Registration attempt');
     const body = await request.json();
 
     // Validate with Zod
@@ -32,11 +34,13 @@ export async function POST(request: Request) {
     });
 
     if (existing) {
+      logger.debug('Auth', 'Registration failed - email already in use', { email: data.email });
       throw new BadRequestError('Cannot create user - email already in use');
     }
 
     // Hash Password
     const hashedPassword = await bcrypt.hash(data.password, 10);
+    logger.debug('Auth', 'Password hashed, creating user');
 
     // Create user - catch unique constraint error (P2002) to handle race conditions
     let newUser;
@@ -67,6 +71,8 @@ export async function POST(request: Request) {
     // Hide password in response
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _, ...user } = newUser;
+
+    logger.info('Auth', 'User registered successfully', { userId: user.id, email: user.email });
 
     return NextResponse.json(user, { status: 201 });
   } catch (error) {

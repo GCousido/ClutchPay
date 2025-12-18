@@ -2,6 +2,7 @@
 import { BadRequestError, handleError } from '@/libs/api-helpers';
 import { uploadPdf } from '@/libs/cloudinary';
 import { db } from '@/libs/db';
+import { logger } from '@/libs/logger';
 import { notifyPaymentReceived } from '@/libs/notifications';
 import { createPayPalPayout } from '@/libs/paypal';
 import { generateReceiptPdf } from '@/libs/pdf-generator';
@@ -50,11 +51,11 @@ export async function POST(request: Request) {
     try {
       event = verifyWebhookSignature(payload, signature);
     } catch (err) {
-      console.error('[Stripe Webhook] Signature verification failed:', err);
+      logger.error('Stripe Webhook', 'Signature verification failed', err);
       throw new BadRequestError('Invalid webhook signature');
     }
 
-    console.log(`[Stripe Webhook] Received event: ${event.type}`);
+    logger.info('Stripe Webhook', `Received event: ${event.type}`, { eventId: event.id });
 
     // Handle different event types
     switch (event.type) {
@@ -76,12 +77,12 @@ export async function POST(request: Request) {
         break;
 
       default:
-        console.log(`[Stripe Webhook] Unhandled event type: ${event.type}`);
+        logger.debug('Stripe Webhook', `Unhandled event type: ${event.type}`);
     }
 
     return NextResponse.json({ received: true });
   } catch (error) {
-    console.error('[Stripe Webhook] Error processing webhook:', error);
+    logger.error('Stripe Webhook', 'Error processing webhook', error);
     return handleError(error);
   }
 }
@@ -93,7 +94,7 @@ export async function POST(request: Request) {
 async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
   const metadata = session.metadata as unknown as StripePaymentMetadata;
   
-  console.log('[Stripe Webhook] Checkout completed:', {
+  logger.info('Stripe Webhook', 'Checkout completed', {
     sessionId: session.id,
     paymentStatus: session.payment_status,
     invoiceId: metadata?.invoiceId,
@@ -104,7 +105,7 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
   if (session.payment_status === 'paid') {
     await processSuccessfulPayment(session);
   } else {
-    console.log('[Stripe Webhook] Payment pending (async), waiting for confirmation...');
+    logger.info('Stripe Webhook', 'Payment pending (async), waiting for confirmation', { sessionId: session.id });
   }
 }
 
@@ -112,7 +113,7 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
  * Handles successful async payment (e.g., PayPal confirmation)
  */
 async function handleAsyncPaymentSuccess(session: Stripe.Checkout.Session) {
-  console.log('[Stripe Webhook] Async payment succeeded:', session.id);
+  logger.info('Stripe Webhook', 'Async payment succeeded', { sessionId: session.id });
   await processSuccessfulPayment(session);
 }
 
@@ -122,7 +123,7 @@ async function handleAsyncPaymentSuccess(session: Stripe.Checkout.Session) {
 async function handleAsyncPaymentFailed(session: Stripe.Checkout.Session) {
   const metadata = session.metadata as unknown as StripePaymentMetadata;
   
-  console.log('[Stripe Webhook] Async payment failed:', {
+  logger.warn('Stripe Webhook', 'Async payment failed', {
     sessionId: session.id,
     invoiceId: metadata?.invoiceId,
   });
@@ -137,7 +138,7 @@ async function handleAsyncPaymentFailed(session: Stripe.Checkout.Session) {
 async function handleSessionExpired(session: Stripe.Checkout.Session) {
   const metadata = session.metadata as unknown as StripePaymentMetadata;
   
-  console.log('[Stripe Webhook] Session expired:', {
+  logger.info('Stripe Webhook', 'Session expired', {
     sessionId: session.id,
     invoiceId: metadata?.invoiceId,
   });
@@ -156,7 +157,7 @@ async function processSuccessfulPayment(session: Stripe.Checkout.Session) {
   const metadata = session.metadata as unknown as StripePaymentMetadata;
 
   if (!metadata?.invoiceId) {
-    console.error('[Stripe Webhook] Missing invoice metadata');
+    logger.error('Stripe Webhook', 'Missing invoice metadata', { sessionId: session.id });
     return;
   }
 
@@ -168,7 +169,7 @@ async function processSuccessfulPayment(session: Stripe.Checkout.Session) {
   });
 
   if (existingPayment) {
-    console.log('[Stripe Webhook] Payment already exists for invoice:', invoiceId);
+    logger.info('Stripe Webhook', 'Payment already exists for invoice', { invoiceId });
     return;
   }
 
@@ -186,12 +187,12 @@ async function processSuccessfulPayment(session: Stripe.Checkout.Session) {
   });
 
   if (!invoice) {
-    console.error('[Stripe Webhook] Invoice not found:', invoiceId);
+    logger.error('Stripe Webhook', 'Invoice not found', { invoiceId });
     return;
   }
 
   if (invoice.status === InvoiceStatus.PAID) {
-    console.log('[Stripe Webhook] Invoice already paid:', invoiceId);
+    logger.info('Stripe Webhook', 'Invoice already paid', { invoiceId });
     return;
   }
 
@@ -214,18 +215,18 @@ async function processSuccessfulPayment(session: Stripe.Checkout.Session) {
         const charge = await stripe.charges.retrieve(chargeId);
         if (charge.receipt_url) {
           receiptUrl = charge.receipt_url;
-          console.log('[Stripe Webhook] Retrieved Stripe receipt URL');
+          logger.debug('Stripe Webhook', 'Retrieved Stripe receipt URL', { chargeId });
         }
       }
     } catch (err) {
-      console.error('[Stripe Webhook] Failed to retrieve Stripe receipt:', err);
+      logger.error('Stripe Webhook', 'Failed to retrieve Stripe receipt', err);
     }
   }
 
   // 2. If no Stripe receipt, generate PDF
   if (!receiptUrl) {
     try {
-      console.log('[Stripe Webhook] Generating PDF receipt...');
+      logger.info('Stripe Webhook', 'Generating PDF receipt', { invoiceId });
       const pdfBuffer = await generateReceiptPdf({
         paymentReference: (session.payment_intent as string) || session.id,
         paymentDate: new Date(),
@@ -244,9 +245,9 @@ async function processSuccessfulPayment(session: Stripe.Checkout.Session) {
       const base64Pdf = `data:application/pdf;base64,${pdfBuffer.toString('base64')}`;
       const uploadResult = await uploadPdf(base64Pdf, 'ClutchPay/receipts');
       receiptUrl = uploadResult.url;
-      console.log('[Stripe Webhook] Generated and uploaded PDF receipt:', receiptUrl);
+      logger.info('Stripe Webhook', 'PDF receipt generated and uploaded', { receiptUrl });
     } catch (err) {
-      console.error('[Stripe Webhook] Failed to generate/upload receipt PDF:', err);
+      logger.error('Stripe Webhook', 'Failed to generate/upload receipt PDF', err);
       // Fallback to avoid failing the payment process
       receiptUrl = `unavailable`; 
     }
@@ -275,7 +276,7 @@ async function processSuccessfulPayment(session: Stripe.Checkout.Session) {
     return newPayment;
   });
 
-  console.log('[Stripe Webhook] Payment created:', payment.id);
+  logger.info('Stripe Webhook', 'Payment created', { paymentId: payment.id, invoiceId });
 
   // Create notification for the invoice issuer about received payment
   try {
@@ -292,7 +293,7 @@ async function processSuccessfulPayment(session: Stripe.Checkout.Session) {
     }
   } catch (notificationError) {
     // Log but don't fail the webhook if notification creation fails
-    console.error('[Stripe Webhook] Failed to create notification:', notificationError);
+    logger.error('Stripe Webhook', 'Failed to create notification', notificationError);
   }
 
   // Initiate payout to receiver (PayPal)
@@ -309,7 +310,7 @@ async function processSuccessfulPayment(session: Stripe.Checkout.Session) {
       note: `Payment for Invoice ${metadata.invoiceNumber} via ClutchPay`,
     });
     
-    console.log('[Stripe Webhook] PayPal payout initiated:', {
+    logger.info('Stripe Webhook', 'PayPal payout initiated', {
       payoutBatchId: payout.payoutBatchId,
       status: payout.batchStatus,
       receiver: metadata.receiverEmail,
@@ -325,7 +326,7 @@ async function processSuccessfulPayment(session: Stripe.Checkout.Session) {
   } catch (payoutError) {
     // Log payout error but don't fail the webhook
     // Payout can be retried later via admin/cron job
-    console.error('[Stripe Webhook] PayPal payout failed:', payoutError);
+    logger.error('Stripe Webhook', 'PayPal payout failed', payoutError);
     // TODO: Queue for retry or notify admin
   }
 }
