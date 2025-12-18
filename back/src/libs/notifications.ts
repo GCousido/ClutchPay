@@ -10,14 +10,14 @@ import {
 } from './email/templates';
 
 /**
- * Default currency for notifications.
+ * Default currency for notifications (from STRIPE_CURRENCY env or EUR).
  */
-const DEFAULT_CURRENCY = 'EUR';
+const DEFAULT_CURRENCY = (process.env.STRIPE_CURRENCY || 'EUR').toUpperCase();
 
 /**
- * Base URL for generating links in emails.
+ * Base URL for generating links in emails (from FRONTEND_URL or NEXT_PUBLIC_APP_URL env).
  */
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+const APP_URL = process.env.FRONTEND_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
 /**
  * Notification message templates indexed by notification type.
@@ -440,4 +440,112 @@ export async function cleanupOldReadNotifications(daysOld: number = 30): Promise
   });
 
   return result.count;
+}
+
+/**
+ * Checks for invoices that are due soon (within specified days) and sends notifications.
+ * Only notifies once per invoice - checks if a PAYMENT_DUE notification already exists.
+ * 
+ * @param daysBeforeDue - Number of days before due date to send notification (default: 3)
+ * @returns Count of notifications sent
+ */
+export async function checkAndNotifyPaymentDue(daysBeforeDue: number = 3): Promise<number> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const targetDate = new Date(today);
+  targetDate.setDate(today.getDate() + daysBeforeDue);
+  targetDate.setHours(23, 59, 59, 999);
+
+  // Find pending/overdue invoices with due date within the target window
+  const invoices = await db.invoice.findMany({
+    where: {
+      status: {
+        in: ['PENDING', 'OVERDUE'],
+      },
+      dueDate: {
+        gte: today,
+        lte: targetDate,
+      },
+    },
+    include: {
+      issuerUser: true,
+      debtorUser: true,
+      payment: true,
+      notifications: {
+        where: {
+          type: NotificationType.PAYMENT_DUE,
+        },
+      },
+    },
+  });
+
+  let count = 0;
+  for (const invoice of invoices) {
+    // Skip if already notified about payment due
+    if (invoice.notifications.length > 0) {
+      continue;
+    }
+
+    try {
+      await notifyPaymentDue(invoice);
+      count++;
+    } catch (error) {
+      console.error(`[Scheduler] Failed to notify payment due for invoice ${invoice.id}:`, error);
+    }
+  }
+
+  console.log(`[Scheduler] Checked payment due: ${count} notifications sent`);
+  return count;
+}
+
+/**
+ * Checks for overdue invoices and sends notifications.
+ * Only notifies once per invoice - checks if a PAYMENT_OVERDUE notification already exists.
+ * 
+ * @returns Count of notifications sent
+ */
+export async function checkAndNotifyPaymentOverdue(): Promise<number> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Find pending/overdue invoices with due date in the past
+  const invoices = await db.invoice.findMany({
+    where: {
+      status: {
+        in: ['PENDING', 'OVERDUE'],
+      },
+      dueDate: {
+        lt: today,
+      },
+    },
+    include: {
+      issuerUser: true,
+      debtorUser: true,
+      payment: true,
+      notifications: {
+        where: {
+          type: NotificationType.PAYMENT_OVERDUE,
+        },
+      },
+    },
+  });
+
+  let count = 0;
+  for (const invoice of invoices) {
+    // Skip if already notified about overdue
+    if (invoice.notifications.length > 0) {
+      continue;
+    }
+
+    try {
+      await notifyPaymentOverdue(invoice);
+      count++;
+    } catch (error) {
+      console.error(`[Scheduler] Failed to notify payment overdue for invoice ${invoice.id}:`, error);
+    }
+  }
+
+  console.log(`[Scheduler] Checked payment overdue: ${count} notifications sent`);
+  return count;
 }
