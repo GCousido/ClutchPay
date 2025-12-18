@@ -1,4 +1,5 @@
 // libs/paypal.ts
+import { InternalServerError } from '@/libs/api-helpers';
 import payoutsSdk from '@paypal/payouts-sdk';
 
 /**
@@ -140,10 +141,10 @@ export async function createPayPalPayout(params: CreatePayoutParams): Promise<Pa
     // If it's an API error, extract details
     if (error.result) {
       const apiError = error.result;
-      throw new Error(`PayPal payout failed: ${apiError.message || apiError.name || 'Unknown error'}`);
+      throw new InternalServerError(`PayPal payout failed: ${apiError.message || apiError.name || 'Unknown error'}`);
     }
     
-    throw new Error(`PayPal payout failed: ${error.message}`);
+    throw new InternalServerError(`PayPal payout failed: ${error.message}`);
   }
 }
 
@@ -206,7 +207,7 @@ export async function getPayoutStatus(payoutBatchId: string): Promise<{
     };
   } catch (error: any) {
     console.error('[PayPal Payout] Error getting payout status:', error);
-    throw new Error(`Failed to get payout status: ${error.message}`);
+    throw new InternalServerError(`Failed to get payout status: ${error.message}`);
   }
 }
 

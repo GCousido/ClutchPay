@@ -1,5 +1,5 @@
 // app/api/payments/stripe/session/[sessionId]/route.ts
-import { handleError, requireAuth } from '@/libs/api-helpers';
+import { BadRequestError, ForbiddenError, handleError, NotFoundError, requireAuth } from '@/libs/api-helpers';
 import { db } from '@/libs/db';
 import { fromCents, getCheckoutSession, mapSessionStatus, StripePaymentMetadata } from '@/libs/stripe';
 import { NextResponse } from 'next/server';
@@ -41,21 +41,25 @@ export async function GET(request: Request, { params }: RouteParams) {
 
     // Validate session ID format
     if (!sessionId || !sessionId.startsWith('cs_')) {
-      return NextResponse.json(
-        { message: 'Invalid session ID format' },
-        { status: 400 }
-      );
+      throw new BadRequestError('Invalid session ID format');
     }
 
     // Retrieve session from Stripe
-    const session = await getCheckoutSession(sessionId);
+    let session: Awaited<ReturnType<typeof getCheckoutSession>>;
+    try {
+      session = await getCheckoutSession(sessionId);
+    } catch (err) {
+      // Check if it's a Stripe "not found" error
+      if (err instanceof Error && err.message.includes('No such checkout.session')) {
+        throw new NotFoundError('Checkout session not found');
+      }
+      throw err;
+    }
+    
     const metadata = session.metadata as unknown as StripePaymentMetadata;
 
     if (!metadata?.invoiceId) {
-      return NextResponse.json(
-        { message: 'Session metadata is missing' },
-        { status: 400 }
-      );
+      throw new BadRequestError('Session metadata is missing');
     }
 
     // Verify user is involved in this payment
@@ -63,10 +67,7 @@ export async function GET(request: Request, { params }: RouteParams) {
     const receiverId = parseInt(metadata.receiverId, 10);
 
     if (sessionUser.id !== payerId && sessionUser.id !== receiverId) {
-      return NextResponse.json(
-        { message: 'You are not authorized to view this payment session' },
-        { status: 403 }
-      );
+      throw new ForbiddenError();
     }
 
     // Get invoice details from database
@@ -112,10 +113,6 @@ export async function GET(request: Request, { params }: RouteParams) {
         : null,
     });
   } catch (error) {
-    // Handle Stripe-specific errors
-    if (error instanceof Error && error.message.includes('No such checkout.session')) {
-      return handleError(new Error('Checkout session not found'));
-    }
     return handleError(error);
   }
 }

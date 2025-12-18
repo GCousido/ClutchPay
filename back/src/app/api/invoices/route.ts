@@ -1,5 +1,5 @@
 // app/api/invoices/route.ts
-import { getPagination, handleError, requireAuth, validateBody } from '@/libs/api-helpers';
+import { BadRequestError, ForbiddenError, getPagination, handleError, NotFoundError, requireAuth, validateBody } from '@/libs/api-helpers';
 import { getSignedPdfUrl, uploadPdf } from '@/libs/cloudinary';
 import { db } from '@/libs/db';
 import { notifyInvoiceIssued } from '@/libs/notifications';
@@ -131,11 +131,11 @@ export async function POST(request: Request) {
 
 		if (parsed.issuerUserId !== sessionUser.id) {
 			// Enforce that the current user can only issue invoices on their own behalf
-			throw new Error('Forbidden');
+			throw new ForbiddenError('Forbidden');
 		}
 
 		if (parsed.debtorUserId === sessionUser.id) {
-			throw new Error('Cannot issue an invoice to yourself');
+			throw new BadRequestError('Cannot issue an invoice to yourself');
 		}
 
 		const debtorExists = await db.user.findUnique({
@@ -144,7 +144,7 @@ export async function POST(request: Request) {
 		});
 
 		if (!debtorExists) {
-			throw new Error('Debtor not found');
+			throw new NotFoundError('Debtor not found');
 		}
 
 		// Upload PDF to Cloudinary

@@ -1,5 +1,5 @@
 // app/api/auth/register/route.ts
-import { handleError } from "@/libs/api-helpers";
+import { BadRequestError, handleError } from "@/libs/api-helpers";
 import { db } from "@/libs/db";
 import { userCreateSchema } from '@/libs/validations/user';
 import { Prisma } from "@prisma/client";
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     });
 
     if (existing) {
-      throw new Error('Cannot create user - email already in use');
+      throw new BadRequestError('Cannot create user - email already in use');
     }
 
     // Hash Password
@@ -59,7 +59,7 @@ export async function POST(request: Request) {
         error.code === "P2002" &&
         (error.meta?.target as string[] || []).includes("email")
       ) {
-        throw new Error('Cannot create user - email already in use');
+        throw new BadRequestError('Cannot create user - email already in use');
       }
       throw error;
     }

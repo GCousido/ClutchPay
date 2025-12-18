@@ -1,5 +1,5 @@
 // app/api/payments/stripe/checkout/route.ts
-import { handleError, requireAuth, validateBody } from '@/libs/api-helpers';
+import { BadRequestError, ForbiddenError, handleError, NotFoundError, requireAuth, validateBody } from '@/libs/api-helpers';
 import { db } from '@/libs/db';
 import { createCheckoutSession, toCents } from '@/libs/stripe';
 import { stripeCheckoutCreateSchema } from '@/libs/validations/stripe';
@@ -78,25 +78,22 @@ export async function POST(request: Request) {
     });
 
     if (!invoice) {
-      throw new Error('Invoice not found');
+      throw new NotFoundError('Invoice not found');
     }
 
     // Only the debtor can pay the invoice
     if (invoice.debtorUserId !== sessionUser.id) {
-      throw new Error('Forbidden');
+      throw new ForbiddenError();
     }
 
     // Check if invoice is already paid
     if (invoice.payment) {
-      throw new Error('Cannot pay - this invoice has already been paid');
+      throw new BadRequestError('This invoice has already been paid');
     }
 
     // Check if invoice is in a payable status. TODO: overdue?
     if (invoice.status !== InvoiceStatus.PENDING && invoice.status !== InvoiceStatus.OVERDUE) {
-      return NextResponse.json(
-        { message: `Cannot pay an invoice with status: ${invoice.status}. Only PENDING or OVERDUE invoices can be paid` },
-        { status: 400 }
-      );
+      throw new BadRequestError(`Cannot pay an invoice with status: ${invoice.status}. Only PENDING or OVERDUE invoices can be paid`);
     }
 
     // Convert amount to cents for Stripe

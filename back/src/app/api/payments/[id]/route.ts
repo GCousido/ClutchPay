@@ -1,5 +1,5 @@
 // app/api/payments/[id]/route.ts
-import { handleError, requireAuth } from '@/libs/api-helpers';
+import { BadRequestError, ForbiddenError, handleError, NotFoundError, requireAuth } from '@/libs/api-helpers';
 import { db } from '@/libs/db';
 import { NextResponse } from 'next/server';
 
@@ -51,7 +51,7 @@ export async function GET(request: Request, context: RouteParams) {
 
 		const paymentId = parseInt(id, 10);
 		if (isNaN(paymentId) || paymentId <= 0) {
-			throw new Error('Cannot parse payment ID');
+			throw new BadRequestError('Cannot parse payment ID');
 		}
 
 		const payment = await db.payment.findUnique({
@@ -105,7 +105,7 @@ export async function GET(request: Request, context: RouteParams) {
 		});
 
 		if (!payment) {
-			throw new Error('Payment not found');
+			throw new NotFoundError('Payment not found');
 		}
 
 		// Check authorization: only payer (debtor) or receiver (issuer) can view
@@ -113,7 +113,7 @@ export async function GET(request: Request, context: RouteParams) {
 		const isIssuer = payment.invoice.issuerUserId === sessionUser.id;
 
 		if (!isDebtor && !isIssuer) {
-			throw new Error('Forbidden');
+			throw new ForbiddenError('Forbidden');
 		}
 
 		return NextResponse.json(payment);

@@ -1,4 +1,4 @@
-import { handleError, requireAuth, requireSameUser, validateBody } from '@/libs/api-helpers';
+import { handleError, NotFoundError, requireAuth, requireSameUser, validateBody } from '@/libs/api-helpers';
 import { db } from '@/libs/db';
 import { formatNotificationResponse } from '@/libs/notifications';
 import {
@@ -51,7 +51,7 @@ export async function GET(
     }
 
     if (!notification) {
-      throw new Error('Notification not found');
+      throw new NotFoundError('Notification not found');
     }
 
     return NextResponse.json({
@@ -94,7 +94,7 @@ export async function PATCH(
     }
 
     if (!existingNotification) {
-      throw new Error('Notification not found');
+      throw new NotFoundError('Notification not found');
     }
 
     const body = await request.json();
@@ -151,7 +151,7 @@ export async function DELETE(
     }
 
     if (!existingNotification) {
-      throw new Error('Notification not found');
+      throw new NotFoundError('Notification not found');
     }
 
     await db.notification.delete({

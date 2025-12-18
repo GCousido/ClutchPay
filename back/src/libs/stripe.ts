@@ -1,4 +1,5 @@
 // libs/stripe.ts
+import { InternalServerError } from '@/libs/api-helpers';
 import Stripe from 'stripe';
 
 /**
@@ -127,7 +128,7 @@ export async function createCheckoutSession(params: {
   });
 
   if (!session.url) {
-    throw new Error('Failed to create Stripe checkout session: No URL returned');
+    throw new InternalServerError('Failed to create Stripe checkout session: No URL returned');
   }
 
   return {
@@ -182,7 +183,7 @@ export function verifyWebhookSignature(payload: string, signature: string): Stri
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   
   if (!webhookSecret) {
-    throw new Error('STRIPE_WEBHOOK_SECRET is not configured');
+    throw new InternalServerError('STRIPE_WEBHOOK_SECRET is not configured');
   }
 
   return stripe.webhooks.constructEvent(payload, signature, webhookSecret);

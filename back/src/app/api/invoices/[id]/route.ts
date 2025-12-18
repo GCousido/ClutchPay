@@ -1,5 +1,5 @@
 // app/api/invoices/[id]/route.ts
-import { handleError, requireAuth, validateBody } from '@/libs/api-helpers';
+import { BadRequestError, handleError, NotFoundError, requireAuth, validateBody } from '@/libs/api-helpers';
 import { deletePdf, extractPublicId, getSignedPdfUrl, uploadPdf } from '@/libs/cloudinary';
 import { db } from '@/libs/db';
 import { notifyInvoiceCanceled } from '@/libs/notifications';
@@ -84,7 +84,7 @@ export async function GET(
 		const invoiceId = Number(contextResolved.id);
 
 		if (Number.isNaN(invoiceId)) {
-			throw new Error('Cannot parse invoice id');
+			throw new BadRequestError('Cannot parse invoice id');
 		}
 
 		const invoice = await db.invoice.findFirst({
@@ -99,7 +99,7 @@ export async function GET(
 		});
 
 		if (!invoice) {
-			throw new Error('Invoice not found');
+			throw new NotFoundError('Invoice not found');
 		}
 		// Generate signed URL for PDF if exists
 		if (invoice.invoicePdfUrl) {
@@ -135,7 +135,7 @@ export async function PUT(
 		const invoiceId = Number(contextResolved.id);
 
 		if (Number.isNaN(invoiceId)) {
-			throw new Error('Cannot parse invoice id');
+			throw new BadRequestError('Cannot parse invoice id');
 		}
 
 		const invoice = await db.invoice.findUnique({
@@ -149,11 +149,11 @@ export async function PUT(
 		});
 
 		if (!invoice || invoice.issuerUserId !== sessionUser.id) {
-			throw new Error('Invoice not found');
+			throw new NotFoundError('Invoice not found');
 		}
 
 		if (invoice.payment) {
-			throw new Error('Cannot modify invoices with payments');
+			throw new BadRequestError('Cannot modify invoices with payments');
 		}
 
 		const body = await request.json();
@@ -211,7 +211,7 @@ export async function DELETE(
 		const invoiceId = Number(contextResolved.id);
 
 		if (Number.isNaN(invoiceId)) {
-			throw new Error('Cannot parse invoice id');
+			throw new BadRequestError('Cannot parse invoice id');
 		}
 
 		const invoice = await db.invoice.findUnique({
@@ -224,11 +224,11 @@ export async function DELETE(
 		});
 
 		if (!invoice || invoice.issuerUserId !== sessionUser.id) { 
-			throw new Error('Invoice not found');
+			throw new NotFoundError('Invoice not found');
 		}
 
 		if (invoice.payment) {
-			throw new Error('Cannot cancel invoices with payments');
+			throw new BadRequestError('Cannot cancel invoices with payments');
 		}
 
 		// Create notification for debtor about the cancellation before deleting

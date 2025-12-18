@@ -1,5 +1,5 @@
 // app/api/users/[id]/route.ts
-import { handleError, requireAuth, requireSameUser, validateBody } from '@/libs/api-helpers';
+import { BadRequestError, handleError, requireAuth, requireSameUser, validateBody } from '@/libs/api-helpers';
 import { deleteImage, extractPublicId, uploadImage } from '@/libs/cloudinary';
 import { db } from '@/libs/db';
 import { userUpdateSchema } from '@/libs/validations';
@@ -23,7 +23,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const userId = Number(resolvedParams.id)
 
     if (Number.isNaN(userId)) {
-      throw new Error('Cannot parse user id');
+      throw new BadRequestError('Invalid user id format');
     }
 
     requireSameUser(sessionUser.id, userId);
@@ -70,7 +70,7 @@ export async function PUT(
     const userId = Number(resolvedParams.id);
 
     if (Number.isNaN(userId)) {
-      throw new Error('Cannot parse user id');
+      throw new BadRequestError('Invalid user id format');
     }
 
     requireSameUser(sessionUser.id, userId);

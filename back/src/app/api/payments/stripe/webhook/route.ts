@@ -1,4 +1,5 @@
 // app/api/payments/stripe/webhook/route.ts
+import { BadRequestError, handleError } from '@/libs/api-helpers';
 import { uploadPdf } from '@/libs/cloudinary';
 import { db } from '@/libs/db';
 import { notifyPaymentReceived } from '@/libs/notifications';
@@ -41,11 +42,7 @@ export async function POST(request: Request) {
     const signature = request.headers.get('stripe-signature');
 
     if (!signature) {
-      console.error('[Stripe Webhook] Missing signature header');
-      return NextResponse.json(
-        { error: 'Missing stripe-signature header' },
-        { status: 400 }
-      );
+      throw new BadRequestError('stripe-signature header is missing');
     }
 
     // Verify webhook signature
@@ -54,10 +51,7 @@ export async function POST(request: Request) {
       event = verifyWebhookSignature(payload, signature);
     } catch (err) {
       console.error('[Stripe Webhook] Signature verification failed:', err);
-      return NextResponse.json(
-        { error: 'Invalid signature' },
-        { status: 400 }
-      );
+      throw new BadRequestError('Invalid webhook signature');
     }
 
     console.log(`[Stripe Webhook] Received event: ${event.type}`);
@@ -88,10 +82,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true });
   } catch (error) {
     console.error('[Stripe Webhook] Error processing webhook:', error);
-    return NextResponse.json(
-      { error: 'Webhook processing failed' },
-      { status: 500 }
-    );
+    return handleError(error);
   }
 }
 
