@@ -78,26 +78,17 @@ export async function POST(request: Request) {
     });
 
     if (!invoice) {
-      return NextResponse.json(
-        { message: 'Invoice not found' },
-        { status: 404 }
-      );
+      throw new Error('Invoice not found');
     }
 
     // Only the debtor can pay the invoice
     if (invoice.debtorUserId !== sessionUser.id) {
-      return NextResponse.json(
-        { message: 'You can only pay invoices where you are the debtor' },
-        { status: 403 }
-      );
+      throw new Error('Forbidden');
     }
 
     // Check if invoice is already paid
     if (invoice.payment) {
-      return NextResponse.json(
-        { message: 'This invoice has already been paid' },
-        { status: 400 }
-      );
+      throw new Error('Cannot pay - this invoice has already been paid');
     }
 
     // Check if invoice is in a payable status. TODO: overdue?

@@ -1,6 +1,6 @@
 // app/api/auth/register/route.ts
+import { handleError } from "@/libs/api-helpers";
 import { db } from "@/libs/db";
-import { formatZodError } from "@/libs/validations";
 import { userCreateSchema } from '@/libs/validations/user';
 import { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
@@ -21,13 +21,7 @@ export async function POST(request: Request) {
     // Validate with Zod
     const parsed = userCreateSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json(
-        {
-          message: "Validation failed",
-          errors: formatZodError(parsed.error),
-        },
-        { status: 400 }
-      );
+      throw parsed.error;
     }
 
     const data = parsed.data;
@@ -38,13 +32,7 @@ export async function POST(request: Request) {
     });
 
     if (existing) {
-      return NextResponse.json(
-        {
-          message: "Email already exists",
-          errors: { email: "Email already in use" },
-        },
-        { status: 400 }
-      );
+      throw new Error('Cannot create user - email already in use');
     }
 
     // Hash Password
@@ -71,13 +59,7 @@ export async function POST(request: Request) {
         error.code === "P2002" &&
         (error.meta?.target as string[] || []).includes("email")
       ) {
-        return NextResponse.json(
-          {
-            message: "Email already exists",
-            errors: { email: "Email already in use" },
-          },
-          { status: 400 }
-        );
+        throw new Error('Cannot create user - email already in use');
       }
       throw error;
     }
@@ -87,14 +69,7 @@ export async function POST(request: Request) {
     const { password: _, ...user } = newUser;
 
     return NextResponse.json(user, { status: 201 });
-  } catch (error: any) {
-    console.error("Register error:", error);
-    return NextResponse.json(
-      {
-        message: "Internal server error",
-        details: error?.message,
-      },
-      { status: 500 }
-    );
+  } catch (error) {
+    return handleError(error);
   }
 }

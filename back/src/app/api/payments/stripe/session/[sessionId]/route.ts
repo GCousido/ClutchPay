@@ -114,10 +114,7 @@ export async function GET(request: Request, { params }: RouteParams) {
   } catch (error) {
     // Handle Stripe-specific errors
     if (error instanceof Error && error.message.includes('No such checkout.session')) {
-      return NextResponse.json(
-        { message: 'Checkout session not found' },
-        { status: 404 }
-      );
+      return handleError(new Error('Checkout session not found'));
     }
     return handleError(error);
   }

@@ -1,4 +1,4 @@
-import { handleError, requireAuth, validateBody } from '@/libs/api-helpers';
+import { handleError, requireAuth, requireSameUser, validateBody } from '@/libs/api-helpers';
 import { db } from '@/libs/db';
 import { formatNotificationResponse } from '@/libs/notifications';
 import {
@@ -45,19 +45,13 @@ export async function GET(
       },
     });
 
-    if (!notification) {
-      return NextResponse.json(
-        { error: 'Notification not found' },
-        { status: 404 }
-      );
+    // Verify ownership first (don't reveal if notification exists)
+    if (notification) {
+      requireSameUser(notification.userId, user.id);
     }
 
-    // Verify ownership
-    if (notification.userId !== user.id) {
-      return NextResponse.json(
-        { message: 'Forbidden' },
-        { status: 403 }
-      );
+    if (!notification) {
+      throw new Error('Notification not found');
     }
 
     return NextResponse.json({
@@ -94,18 +88,13 @@ export async function PATCH(
       where: { id },
     });
 
-    if (!existingNotification) {
-      return NextResponse.json(
-        { error: 'Notification not found' },
-        { status: 404 }
-      );
+    // Verify ownership first (don't reveal if notification exists)
+    if (existingNotification) {
+      requireSameUser(existingNotification.userId, user.id);
     }
 
-    if (existingNotification.userId !== user.id) {
-      return NextResponse.json(
-        { message: 'Forbidden' },
-        { status: 403 }
-      );
+    if (!existingNotification) {
+      throw new Error('Notification not found');
     }
 
     const body = await request.json();
@@ -156,18 +145,13 @@ export async function DELETE(
       where: { id },
     });
 
-    if (!existingNotification) {
-      return NextResponse.json(
-        { error: 'Notification not found' },
-        { status: 404 }
-      );
+    // Verify ownership first (don't reveal if notification exists)
+    if (existingNotification) {
+      requireSameUser(existingNotification.userId, user.id);
     }
 
-    if (existingNotification.userId !== user.id) {
-      return NextResponse.json(
-        { message: 'Forbidden' },
-        { status: 403 }
-      );
+    if (!existingNotification) {
+      throw new Error('Notification not found');
     }
 
     await db.notification.delete({

@@ -1,7 +1,7 @@
 // app/api/users/[id]/contacts/route.ts
 import { getPagination, handleError, requireAuth, requireSameUser } from '@/libs/api-helpers';
 import { db } from '@/libs/db';
-import { addContactSchema, formatZodError } from '@/libs/validations';
+import { addContactSchema } from '@/libs/validations';
 import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
 
@@ -24,12 +24,12 @@ export async function GET(request: Request) {
 
     const m = url.pathname.match(/\/api\/users\/(\d+)\/contacts\/?$/);
     if (!m) {
-      return NextResponse.json({ message: 'Invalid user id in path' }, { status: 400 });
+      throw new Error('Cannot parse user id');
     }
 
     const userId = Number(m[1]);
     if (Number.isNaN(userId)) {
-      return NextResponse.json({ message: 'Invalid user id' }, { status: 400 });
+      throw new Error('Cannot parse user id');
     }
 
     requireSameUser(sessionUser.id, userId);
@@ -104,11 +104,11 @@ export async function DELETE(request: Request) {
     const url = new URL(request.url);
     const m = url.pathname.match(/\/api\/users\/(\d+)\/contacts\/?$/);
     if (!m) {
-      return NextResponse.json({ message: 'Invalid user id in path' }, { status: 400 });
+      throw new Error('Cannot parse user id in path');
     }
     const userId = Number(m[1]);
     if (Number.isNaN(userId)) {
-      return NextResponse.json({ message: 'Invalid user id' }, { status: 400 });
+      throw new Error('Cannot parse user id');
     }
 
     requireSameUser(sessionUser.id, userId);
@@ -117,11 +117,11 @@ export async function DELETE(request: Request) {
     const contactId = Number(body.contactId);
 
     if (!contactId || Number.isNaN(contactId)) {
-      return NextResponse.json({ message: 'contactId is required and must be a number' }, { status: 400 });
+      throw new Error('Cannot parse contact ID');
     }
 
     if (contactId === userId) {
-      return NextResponse.json({ message: 'Cannot remove yourself as a contact' }, { status: 400 });
+      throw new Error('Cannot remove yourself as a contact');
     }
 
     // Check if contact relationship exists
@@ -136,7 +136,7 @@ export async function DELETE(request: Request) {
     });
 
     if (!user || user.contacts.length === 0) {
-      return NextResponse.json({ message: 'Contact not found' }, { status: 404 });
+      throw new Error('Contact not found');
     }
 
     // Disconnect the contact
@@ -173,11 +173,11 @@ export async function POST(request: Request) {
     const url = new URL(request.url);
     const m = url.pathname.match(/\/api\/users\/(\d+)\/contacts\/?$/);
     if (!m) {
-      return NextResponse.json({ message: 'Invalid user id in path' }, { status: 400 });
+      throw new Error('Cannot parse user id');
     }
     const userId = Number(m[1]);
     if (Number.isNaN(userId)) {
-      return NextResponse.json({ message: 'Invalid user id' }, { status: 400 });
+      throw new Error('Cannot parse user id');
     }
 
     requireSameUser(sessionUser.id, userId);
@@ -185,18 +185,18 @@ export async function POST(request: Request) {
     const body = await request.json();
     const parsed = addContactSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ message: 'Validation failed', errors: formatZodError(parsed.error),}, { status: 400 });
+      throw parsed.error;
     }
     const { contactId } = parsed.data;
 
     if (contactId === userId) {
-      return NextResponse.json({ message: 'Cannot add yourself as a contact' }, { status: 400 });
+      throw new Error('Cannot add yourself as a contact');
     }
 
     // ensure target user exists
     const target = await db.user.findUnique({ where: { id: contactId }, select: { id: true, email: true, name: true } });
     if (!target) {
-      return NextResponse.json({ message: 'Contact user not found' }, { status: 404 });
+      throw new Error('Contact user not found');
     }
 
     // Check if contact already exists
@@ -209,7 +209,7 @@ export async function POST(request: Request) {
       },
     });
     if (existingRelation) {
-      return NextResponse.json({ message: 'Contact already exists' }, { status: 400 });
+      throw new Error('Cannot add - contact already exists');
     }
 
     // Try to connect the contact (many-to-many)
@@ -236,7 +236,7 @@ export async function POST(request: Request) {
     } catch (error: any) {
       // handle unique constraint / already connected
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        return NextResponse.json({ message: 'Contact already exists' }, { status: 400 });
+        throw new Error('Cannot add - contact already exists');
       }
       throw error;
     }

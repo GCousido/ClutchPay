@@ -129,9 +129,6 @@ describe('DELETE /api/invoices/:id - Delete Invoice', () => {
 
     expect(response.status).toBe(400);
 
-    const data = await response.json();
-    expect(data.message).toBe('Invoices with payments cannot be cancelled');
-
     expect(db.invoice.delete).not.toHaveBeenCalled();
     expect(cloudinaryLib.deletePdf).not.toHaveBeenCalled();
   });

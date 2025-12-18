@@ -23,7 +23,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const userId = Number(resolvedParams.id)
 
     if (Number.isNaN(userId)) {
-      return NextResponse.json({ message: 'Invalid user id' }, { status: 400 });
+      throw new Error('Cannot parse user id');
     }
 
     requireSameUser(sessionUser.id, userId);
@@ -70,7 +70,7 @@ export async function PUT(
     const userId = Number(resolvedParams.id);
 
     if (Number.isNaN(userId)) {
-      return NextResponse.json({ message: 'Invalid user id' }, { status: 400 });
+      throw new Error('Cannot parse user id');
     }
 
     requireSameUser(sessionUser.id, userId);

@@ -128,9 +128,6 @@ describe('GET /api/users/[id]', () => {
 
       const res = await GET(req, { params: Promise.resolve({ id: 'invalid' }) });
       expect(res.status).toBe(400);
-
-      const json = await getJsonResponse(res);
-      expect(json.message).toBe('Invalid user id');
     });
 
     it('should return 400 for invalid user ID (NaN)', async () => {

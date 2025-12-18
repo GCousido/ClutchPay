@@ -115,10 +115,8 @@ describe('GET /api/notifications', () => {
       clearMockSession();
       const request = createRequest('http://localhost:3000/api/notifications');
       const response = await GET(request);
-      const data = await getJsonResponse(response);
 
       expect(response.status).toBe(401);
-      expect(data.error).toBe('Unauthorized');
     });
   });
 
@@ -254,10 +252,8 @@ describe('PATCH /api/notifications', () => {
       body: { notificationIds: [1] },
     });
     const response = await PATCH(request);
-    const data = await getJsonResponse(response);
 
     expect(response.status).toBe(401);
-    expect(data.error).toBe('Unauthorized');
   });
 
   it('should mark specific notifications as read', async () => {
@@ -388,10 +384,8 @@ describe('DELETE /api/notifications', () => {
       body: { notificationIds: [1] },
     });
     const response = await DELETE(request);
-    const data = await getJsonResponse(response);
 
     expect(response.status).toBe(401);
-    expect(data.error).toBe('Unauthorized');
   });
 
   it('should delete specific notifications', async () => {

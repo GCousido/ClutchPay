@@ -38,25 +38,38 @@ export function requireSameUser(sessionUserId: number, targetUserId: number) {
  * Handles API route errors and returns appropriate HTTP responses
  * @param {unknown} error - Error to handle (ZodError, Error, or unknown)
  * @returns {NextResponse} JSON response with appropriate status code
- * - 400 for validation errors (ZodError)
+ * - 400 for validation errors (ZodError) and "Cannot..." errors
  * - 401 for authentication errors
  * - 403 for authorization errors
+ * - 404 for not found errors
  * - 500 for internal server errors
  */
 export function handleError(error: unknown) {
   console.error(error);
   
   if (error instanceof ZodError) {
+    const formatted: Record<string, string> = {};
+    error.issues.forEach((issue) => {
+      const field = issue.path.join('.') || 'body';
+      formatted[field] = issue.message;
+    });
     return NextResponse.json(
-      { errors: error.issues },
+      { message: 'Validation failed', errors: formatted },
       { status: 400 }
     );
   }
   
   if (error instanceof Error) {
+    if (error.message.startsWith('Cannot')) {
+      return NextResponse.json(
+        { message: error.message },
+        { status: 400 }
+      );
+    }
+    
     if (error.message === 'Unauthorized') {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { message: 'Unauthorized' },
         { status: 401 }
       );
     }
@@ -67,15 +80,22 @@ export function handleError(error: unknown) {
         { status: 403 }
       );
     }
+
+    if (error.message.includes('not found')) {
+      return NextResponse.json(
+        { message: error.message },
+        { status: 404 }
+      );
+    }
     
     return NextResponse.json(
-      { error: error.message },
+      { message: error.message },
       { status: 500 }
     );
   }
   
   return NextResponse.json(
-    { error: 'Internal server error' },
+    { message: 'Internal server error' },
     { status: 500 }
   );
 }

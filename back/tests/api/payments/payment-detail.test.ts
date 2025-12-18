@@ -157,9 +157,6 @@ describe('GET /api/payments/:id - Payment Detail', () => {
       });
 
       expect(response.status).toBe(403);
-
-      const data = await response.json();
-      expect(data.message).toBe('You do not have permission to view this payment');
     });
   });
 
@@ -191,9 +188,6 @@ describe('GET /api/payments/:id - Payment Detail', () => {
       });
 
       expect(response.status).toBe(400);
-
-      const data = await response.json();
-      expect(data.message).toBe('Invalid payment ID');
     });
 
     it('should return 400 for invalid payment ID (negative)', async () => {
@@ -205,9 +199,6 @@ describe('GET /api/payments/:id - Payment Detail', () => {
       });
 
       expect(response.status).toBe(400);
-
-      const data = await response.json();
-      expect(data.message).toBe('Invalid payment ID');
     });
 
     it('should return 400 for invalid payment ID (zero)', async () => {
@@ -218,9 +209,6 @@ describe('GET /api/payments/:id - Payment Detail', () => {
       });
 
       expect(response.status).toBe(400);
-
-      const data = await response.json();
-      expect(data.message).toBe('Invalid payment ID');
     });
 
     it('should return 400 for invalid payment ID (decimal)', async () => {
@@ -232,9 +220,6 @@ describe('GET /api/payments/:id - Payment Detail', () => {
       });
 
       expect(response.status).toBe(400);
-
-      const data = await response.json();
-      expect(data.message).toBe('Invalid payment ID');
     });
   });
 

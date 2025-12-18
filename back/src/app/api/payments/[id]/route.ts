@@ -51,7 +51,7 @@ export async function GET(request: Request, context: RouteParams) {
 
 		const paymentId = parseInt(id, 10);
 		if (isNaN(paymentId) || paymentId <= 0) {
-			return NextResponse.json({ message: 'Invalid payment ID' }, { status: 400 });
+			throw new Error('Cannot parse payment ID');
 		}
 
 		const payment = await db.payment.findUnique({
@@ -105,7 +105,7 @@ export async function GET(request: Request, context: RouteParams) {
 		});
 
 		if (!payment) {
-			return NextResponse.json({ message: 'Payment not found' }, { status: 404 });
+			throw new Error('Payment not found');
 		}
 
 		// Check authorization: only payer (debtor) or receiver (issuer) can view
@@ -113,10 +113,7 @@ export async function GET(request: Request, context: RouteParams) {
 		const isIssuer = payment.invoice.issuerUserId === sessionUser.id;
 
 		if (!isDebtor && !isIssuer) {
-			return NextResponse.json(
-				{ message: 'You do not have permission to view this payment' },
-				{ status: 403 }
-			);
+			throw new Error('Forbidden');
 		}
 
 		return NextResponse.json(payment);

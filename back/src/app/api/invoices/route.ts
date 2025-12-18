@@ -131,11 +131,11 @@ export async function POST(request: Request) {
 
 		if (parsed.issuerUserId !== sessionUser.id) {
 			// Enforce that the current user can only issue invoices on their own behalf
-			return NextResponse.json({ message: 'You can only issue invoices as yourself' }, { status: 403 });
+			throw new Error('Forbidden');
 		}
 
 		if (parsed.debtorUserId === sessionUser.id) {
-			return NextResponse.json({ message: 'You cannot issue an invoice to yourself' }, { status: 400 });
+			throw new Error('Cannot issue an invoice to yourself');
 		}
 
 		const debtorExists = await db.user.findUnique({
@@ -144,7 +144,7 @@ export async function POST(request: Request) {
 		});
 
 		if (!debtorExists) {
-			return NextResponse.json({ message: 'Debtor not found' }, { status: 404 });
+			throw new Error('Debtor not found');
 		}
 
 		// Upload PDF to Cloudinary

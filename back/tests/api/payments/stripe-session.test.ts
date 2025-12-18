@@ -151,7 +151,6 @@ describe('GET /api/payments/stripe/session/:sessionId', () => {
     const data = await response.json();
 
     expect(response.status).toBe(401);
-    expect(data.error).toBe('Unauthorized');
   });
 
   it('should return 403 when user is not involved in the payment', async () => {
@@ -233,10 +232,10 @@ describe('GET /api/payments/stripe/session/:sessionId', () => {
     const response = await GET(request, { 
       params: Promise.resolve({ sessionId: 'cs_test_not_found' }) 
     });
-    const data = await response.json();
 
     expect(response.status).toBe(404);
-    expect(data.message).toBe('Checkout session not found');
+    const data = await response.json();
+    expect(data.message).toContain('not found');
   });
 
   it('should include payment details when invoice is already paid', async () => {

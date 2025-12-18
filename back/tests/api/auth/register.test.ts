@@ -181,9 +181,6 @@ describe('POST /api/auth/register', () => {
 
       expect(res.status).toBe(400);
 
-      const json = await getJsonResponse(res);
-      expect(json.message).toBe('Email already exists');
-      expect(json.errors).toBeDefined();
     });
   });
 

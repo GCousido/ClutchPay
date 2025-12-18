@@ -84,7 +84,7 @@ export async function GET(
 		const invoiceId = Number(contextResolved.id);
 
 		if (Number.isNaN(invoiceId)) {
-			return NextResponse.json({ message: 'Invalid invoice id' }, { status: 400 });
+			throw new Error('Cannot parse invoice id');
 		}
 
 		const invoice = await db.invoice.findFirst({
@@ -96,8 +96,10 @@ export async function GET(
 				],
 			},
 			select: invoiceSelect,
-		});		if (!invoice) {
-			return NextResponse.json({ message: 'Invoice not found' }, { status: 404 });
+		});
+
+		if (!invoice) {
+			throw new Error('Invoice not found');
 		}
 		// Generate signed URL for PDF if exists
 		if (invoice.invoicePdfUrl) {
@@ -133,7 +135,7 @@ export async function PUT(
 		const invoiceId = Number(contextResolved.id);
 
 		if (Number.isNaN(invoiceId)) {
-			return NextResponse.json({ message: 'Invalid invoice id' }, { status: 400 });
+			throw new Error('Cannot parse invoice id');
 		}
 
 		const invoice = await db.invoice.findUnique({
@@ -147,11 +149,11 @@ export async function PUT(
 		});
 
 		if (!invoice || invoice.issuerUserId !== sessionUser.id) {
-			return NextResponse.json({ message: 'Invoice not found' }, { status: 404 });
+			throw new Error('Invoice not found');
 		}
 
 		if (invoice.payment) {
-			return NextResponse.json({ message: 'Invoices with payments cannot be modified' }, { status: 400 });
+			throw new Error('Cannot modify invoices with payments');
 		}
 
 		const body = await request.json();
@@ -209,7 +211,7 @@ export async function DELETE(
 		const invoiceId = Number(contextResolved.id);
 
 		if (Number.isNaN(invoiceId)) {
-			return NextResponse.json({ message: 'Invalid invoice id' }, { status: 400 });
+			throw new Error('Cannot parse invoice id');
 		}
 
 		const invoice = await db.invoice.findUnique({
@@ -217,16 +219,16 @@ export async function DELETE(
 			include: {
 				issuerUser: true,
 				debtorUser: true,
-				payment: { select: { id: true } },
+				payment: true,
 			},
 		});
 
-		if (!invoice || invoice.issuerUserId !== sessionUser.id) {
-			return NextResponse.json({ message: 'Invoice not found' }, { status: 404 });
+		if (!invoice || invoice.issuerUserId !== sessionUser.id) { 
+			throw new Error('Invoice not found');
 		}
 
 		if (invoice.payment) {
-			return NextResponse.json({ message: 'Invoices with payments cannot be cancelled' }, { status: 400 });
+			throw new Error('Cannot cancel invoices with payments');
 		}
 
 		// Create notification for debtor about the cancellation before deleting
