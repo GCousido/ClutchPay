@@ -128,6 +128,26 @@ jobs:
             back/test-results/
           retention-days: 30
   
+  # Always-pass job to satisfy branch protection even when tests are skipped
+  test-status:
+    name: Test Status Check
+    runs-on: ubuntu-latest
+    needs: test
+    if: always()
+    steps:
+      - name: Check test results
+        run: |
+          if [ "${{ needs.test.result }}" == "skipped" ]; then
+            echo "Tests were skipped (no changes in /back/)"
+            exit 0
+          elif [ "${{ needs.test.result }}" == "success" ]; then
+            echo "Tests passed"
+            exit 0
+          else
+            echo "Tests failed"
+            exit 1
+          fi
+  
   build:
     name: Build Check on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}

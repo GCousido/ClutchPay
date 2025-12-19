@@ -13,6 +13,7 @@
     <script src="JS/i18n.js" defer></script>
     <script src="JS/auth.js" defer></script>
     <script src="JS/payments.js" defer></script>
+    <script src="JS/internal-notifications.js" defer></script>
     <!-- Dashboard Modules -->
     <script src="JS/dashboard/core.js" defer></script>
     <script src="JS/dashboard/profile.js" defer></script>
@@ -107,6 +108,14 @@
 
                 <!-- Action buttons (desktop only) -->
                 <div class="profile-actions desktop-only">
+                    <!-- Notifications button -->
+                    <button class="btn btn-icon notifications-btn" id="notifications-btn" aria-label="Notifications">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                        </svg>
+                        <span class="notification-badge"></span>
+                    </button>
                     <button class="btn btn-primary" id="edit-profile-btn" data-i18n="userDashboard.editProfile"></button>
                     <button class="btn btn-secondary" id="logout-btn" data-i18n="userDashboard.logout"></button>
                 </div>
@@ -127,6 +136,14 @@
             <div class="mobile-menu" id="mobile-menu">
                 <div class="mobile-menu-content">
                     <!-- Mobile buttons -->
+                    <!-- Notifications button (mobile) -->
+                    <button class="btn btn-icon notifications-btn" id="notifications-btn-mobile" aria-label="Notifications">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                        </svg>
+                        <span class="notification-badge"></span>
+                    </button>
                     <button class="btn btn-primary" id="edit-profile-btn-mobile" data-i18n="userDashboard.editProfile"></button>
                     <button class="btn btn-secondary" id="logout-btn-mobile" data-i18n="userDashboard.logout"></button>
                     
@@ -441,6 +458,27 @@
                 <div class="confirm-buttons">
                     <button class="btn btn-secondary" id="confirm-cancel"></button>
                     <button class="btn btn-primary" id="confirm-accept"></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- NOTIFICATIONS MODAL -->
+        <div id="notifications-modal" class="modal notifications-modal">
+            <div class="modal-content notifications-modal-content">
+                <div class="notifications-modal-header">
+                    <h2 data-i18n="notifications.title">Notificaciones</h2>
+                    <button class="close" id="notifications-modal-close" aria-label="Close">&times;</button>
+                </div>
+                <div class="notifications-modal-actions">
+                    <button class="btn btn-small btn-secondary" id="notifications-mark-all-read" data-i18n="notifications.markAllRead">
+                        Marcar todas como leídas
+                    </button>
+                    <button class="btn btn-small btn-secondary" id="notifications-delete-all" data-i18n="notifications.deleteAllRead">
+                        Eliminar leídas
+                    </button>
+                </div>
+                <div class="notifications-list" id="notifications-list">
+                    <p class="loading" data-i18n="userDashboard.loading">Cargando...</p>
                 </div>
             </div>
         </div>

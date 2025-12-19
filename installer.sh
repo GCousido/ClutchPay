@@ -144,7 +144,7 @@ DEFAULT_FRONTEND_PORT=80
 
 # Repository Configuration
 REPO_URL="https://github.com/GCousido/ClutchPay.git"
-REPO_TAG="add-notifications"  # Development branch - change to release tag for production
+REPO_TAG="main"  # Development branch - change to release tag for production
 
 # Database credentials (from .env defaults)
 DB_NAME="clutchpay_db"
