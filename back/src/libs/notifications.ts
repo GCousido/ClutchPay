@@ -209,7 +209,7 @@ export async function notifyInvoiceIssued(
           ? new Date(invoice.dueDate).toLocaleDateString()
           : undefined,
         subject: invoice.subject,
-        invoiceUrl: `${APP_URL}/invoices/${invoice.id}`,
+        invoiceUrl: `${APP_URL}/main.html`,
       }),
     });
     logger.info('Email', 'Invoice issued email sent', {
@@ -264,7 +264,7 @@ export async function notifyPaymentReceived(
         currency: DEFAULT_CURRENCY,
         paymentDate,
         paymentMethod,
-        invoiceUrl: `${APP_URL}/invoices/${invoice.id}`,
+        invoiceUrl: `${APP_URL}/main.html`,
       }),
     });
     logger.info('Email', 'Payment received email sent', {
@@ -367,7 +367,7 @@ export async function notifyPaymentDue(
         currency: DEFAULT_CURRENCY,
         dueDate: new Date(invoice.dueDate).toLocaleDateString(),
         daysUntilDue: Math.max(0, daysUntilDue),
-        invoiceUrl: `${APP_URL}/invoices/${invoice.id}`,
+        invoiceUrl: `${APP_URL}/main.html`,
       }),
     });
     logger.info('Email', 'Payment due email sent', {
@@ -420,7 +420,7 @@ export async function notifyPaymentOverdue(
         currency: DEFAULT_CURRENCY,
         dueDate: new Date(invoice.dueDate).toLocaleDateString(),
         daysOverdue: Math.max(1, daysOverdue),
-        invoiceUrl: `${APP_URL}/invoices/${invoice.id}`,
+        invoiceUrl: `${APP_URL}/main.html`,
       }),
     });
     logger.info('Email', 'Payment overdue email sent', {

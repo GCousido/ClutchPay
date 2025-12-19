@@ -38,6 +38,7 @@ export interface BaseLayoutProps {
  */
 export function BaseLayout({ preview, heading, children }: BaseLayoutProps) {
   const appUrl = process.env.FRONTEND_URL;
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000';
 
   return (
     <Html>
@@ -61,7 +62,7 @@ export function BaseLayout({ preview, heading, children }: BaseLayoutProps) {
                 }}
               >
                 <Img
-                  src={`${appUrl}/logo.png`}
+                  src={`${backendUrl}/logo.svg`}
                   width="60"
                   height="60"
                   alt="ClutchPay"
