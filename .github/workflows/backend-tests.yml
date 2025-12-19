@@ -88,12 +88,12 @@ jobs:
         working-directory: ./back
         run: pnpm run test:coverage
       
-      - name: Run Cloudinary integration tests
+      - name: Run integration tests
         if: matrix.os == 'ubuntu-latest' && matrix.node-version == '22.x'
         working-directory: ./back
         env:
-          RUN_CLOUDINARY_INTEGRATION: 'true'
-        run: pnpm test cloudinary-integration
+          RUN_INTEGRATION_TESTS: 'true'
+        run: pnpm test tests/libs/*-integration.test.ts
       
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest' && matrix.node-version == '22.x'

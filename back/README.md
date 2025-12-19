@@ -583,18 +583,20 @@ LOG_LEVEL=DEBUG  # DEBUG, INFO, WARN, ERROR (default: INFO)
 
 ---
 
-## ☁️ Cloudinary Integration
+## ☁️ External Services Integration
 
-ClutchPay uses Cloudinary for storing and managing files:
+ClutchPay integrates with several external services for different functionalities:
 
-### Features
+### Cloudinary (File Storage)
 
+Used for storing and managing files:
+
+**Features:**
 - **Profile Images**: Automatic upload, transformation (500x500), and deletion
 - **Invoice PDFs**: Upload as raw resources, automatic deletion on invoice cancellation
 - **URL Extraction**: Automatic public_id extraction from Cloudinary URLs
 
-### Folder Structure
-
+**Folder Structure:**
 ```text
 ClutchPay/
 ├── profile_images/    # User profile pictures
@@ -604,15 +606,101 @@ ClutchPay/
     └── invoices/      # Test PDFs
 ```
 
-### Configuration
-
-Set these environment variables:
-
+**Configuration:**
 ```env
 NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=your-cloud-name
 NEXT_PUBLIC_CLOUDINARY_API_KEY=your-api-key
 CLOUDINARY_API_SECRET=your-api-secret
 ```
+
+### Stripe (Payment Processing)
+
+Handles secure payment processing for debtors:
+
+**Features:**
+- Checkout sessions for card/bank payments
+- Webhook handling for payment confirmations
+- Multi-currency support
+
+**Configuration:**
+```env
+STRIPE_SECRET_KEY=sk_test_your_key  # or sk_live_ for production
+STRIPE_WEBHOOK_SECRET=whsec_your_secret
+STRIPE_CURRENCY=eur  # usd, eur, gbp, etc.
+```
+
+### PayPal (Issuer Payouts)
+
+Handles automated payouts to invoice issuers:
+
+**Features:**
+- Automated payouts when payments are received
+- Sandbox and live environment support
+- Batch payout processing
+
+**Configuration:**
+```env
+PAYPAL_CLIENT_ID=your-client-id
+PAYPAL_CLIENT_SECRET=your-client-secret
+PAYPAL_MODE=sandbox  # or 'live' for production
+```
+
+### Resend (Email Notifications)
+
+Sends email notifications for invoice events:
+
+**Features:**
+- Invoice issued/canceled notifications
+- Payment due/received notifications
+- React Email templates
+- Domain verification support
+
+**Configuration:**
+```env
+RESEND_API_KEY=re_your_key
+RESEND_FROM_EMAIL=ClutchPay <noreply@yourdomain.com>
+```
+
+### Integration Tests
+
+The backend includes integration tests for all external services. These tests verify that credentials are configured correctly and services are accessible.
+
+**Enable integration tests:**
+```env
+RUN_INTEGRATION_TESTS=true
+```
+
+**Optional: Specify test email recipient for Resend:**
+```env
+TEST_EMAIL_RECIPIENT=your-test-email@example.com
+```
+
+**Run integration tests:**
+```bash
+pnpm test -- cloudinary-integration
+pnpm test -- stripe-integration
+pnpm test -- paypal-integration
+pnpm test -- resend-integration
+```
+
+**⚠️ Important Safety Requirements:**
+
+Integration tests **only run** if ALL these conditions are met:
+
+1. `RUN_INTEGRATION_TESTS=true` is set in `.env`
+2. **Stripe**: API key starts with `sk_test_` (not `sk_live_`)
+3. **PayPal**: `PAYPAL_MODE=sandbox` (not `live`)
+4. **Resend**: Email sending is optional (set `TEST_EMAIL_RECIPIENT` to enable)
+5. **Cloudinary**: Tests upload and immediately delete test files
+
+**What the tests do:**
+
+- **Stripe**: Creates and cancels a test payment intent (no charges in test mode)
+- **PayPal**: Attempts to create a test payout batch (safe in sandbox mode)
+- **Resend**: Only sends email if `TEST_EMAIL_RECIPIENT` is configured
+- **Cloudinary**: Uploads and deletes test images/PDFs
+
+**If using production credentials**, tests will be automatically **skipped** to prevent accidental charges.
 
 ---
 
