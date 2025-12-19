@@ -49,6 +49,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const dashboardPayments = new DashboardPayments(dashboardCore);
     const dashboardMobile = new DashboardMobile(dashboardCore);
 
+    //Initialize internal notifications system
+    const notificationSystem = new InternalNotifications(authInstance);
+    await notificationSystem.init();
+    // Make it globally accessible for click handlers
+    window.notificationSystem = notificationSystem;
+
     //Initialize modules
     dashboardProfile.init();
     dashboardContacts.init();
