@@ -138,7 +138,7 @@ Schema Location: `prisma/schema.prisma`
 | `STRIPE_SECRET_KEY` | Private API key for server operations | `sk_test_...` or `sk_live_...` |
 | `STRIPE_WEBHOOK_SECRET` | Secret for verifying webhook signatures | `whsec_...` |
 | `STRIPE_CURRENCY` | Default currency for payments | `eur`, `usd`, `gbp` |
-| `NEXT_PUBLIC_APP_URL` | Application URL for redirect callbacks | `http://localhost:3000` |
+| `FRONTEND_URL` | Frontend URL for redirect callbacks (fallback) | `http://localhost:80` |
 
 **Integration:** Stripe functionality is implemented across several modules. The file `src/libs/stripe.ts` contains the core Stripe client initialization and utility functions. The route `src/app/api/payments/stripe-session/route.ts` creates Checkout Sessions for invoice payments. The route `src/app/api/payments/stripe-webhook/route.ts` processes webhook events for payment confirmation. The webhook endpoint verifies event signatures using the webhook secret, then updates invoice status, creates payment records, generates receipts, and triggers notifications upon successful payment.
 
@@ -298,9 +298,8 @@ The following table summarizes all environment variables required for the comple
 | PayPal | `PAYPAL_CLIENT_SECRET` | Yes | OAuth client secret |
 | PayPal | `PAYPAL_MODE` | Yes | sandbox or live |
 | Email | `RESEND_API_KEY` | Yes | Resend API key |
-| Email | `FRONTEND_URL` | Yes | URL for email links |
+| Email | `FRONTEND_URL` | Yes | URL for email links and redirects |
 | Cron | `CRON_SECRET` | Production | Endpoint protection secret |
-| General | `NEXT_PUBLIC_APP_URL` | Yes | Public application URL |
 
 ---
 

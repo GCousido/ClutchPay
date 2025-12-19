@@ -16,9 +16,9 @@ import { logger } from './logger';
 const DEFAULT_CURRENCY = (process.env.STRIPE_CURRENCY || 'EUR').toUpperCase();
 
 /**
- * Base URL for generating links in emails (from FRONTEND_URL or NEXT_PUBLIC_APP_URL env).
+ * Base URL for generating links in emails (from FRONTEND_URL env).
  */
-const APP_URL = process.env.FRONTEND_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+const APP_URL = process.env.FRONTEND_URL || 'http://localhost:80';
 
 /**
  * Notification message templates indexed by notification type.

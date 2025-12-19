@@ -9,7 +9,7 @@ import Stripe from 'stripe';
  * Required environment variables:
  * - STRIPE_SECRET_KEY: Your Stripe secret API key
  * - STRIPE_WEBHOOK_SECRET: Webhook signing secret for verifying events
- * - NEXT_PUBLIC_APP_URL: Base URL of the application (for redirect URLs)
+ * - FRONTEND_URL: Base URL of the frontend application (for fallback redirect URLs)
  */
 export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-11-17.clover',
@@ -94,7 +94,7 @@ export async function createCheckoutSession(params: {
     cancelUrl,
   } = params;
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
   logger.debug('Stripe', 'Creating checkout session', { invoiceId, invoiceNumber, amount, currency, payerId, receiverId });
 

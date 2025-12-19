@@ -117,7 +117,6 @@ LOG_LEVEL=INFO  # DEBUG, INFO, WARN, ERROR
 
 # Application
 NODE_ENV=development
-NEXT_PUBLIC_APP_URL=http://localhost:3000
 FRONTEND_URL=http://localhost:80
 ```
 

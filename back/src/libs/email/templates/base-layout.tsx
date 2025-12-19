@@ -1,16 +1,16 @@
 // libs/email/templates/base-layout.tsx
 import {
-    Body,
-    Container,
-    Head,
-    Heading,
-    Hr,
-    Html,
-    Img,
-    Link,
-    Preview,
-    Section,
-    Text,
+  Body,
+  Container,
+  Head,
+  Heading,
+  Hr,
+  Html,
+  Img,
+  Link,
+  Preview,
+  Section,
+  Text,
 } from '@react-email/components';
 import * as React from 'react';
 
@@ -37,7 +37,7 @@ export interface BaseLayoutProps {
  * @returns React element for the base email layout
  */
 export function BaseLayout({ preview, heading, children }: BaseLayoutProps) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://clutchpay.com';
+  const appUrl = process.env.FRONTEND_URL;
 
   return (
     <Html>

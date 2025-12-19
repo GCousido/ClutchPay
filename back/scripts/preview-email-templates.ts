@@ -12,17 +12,17 @@
  */
 
 // Forzar la variable ANTES de cualquier import
-process.env.NEXT_PUBLIC_APP_URL = 'http://localhost:3000'; // O tu URL de producción si la imagen está subida
+process.env.FRONTEND_URL = 'http://localhost:80'; // O tu URL de producción si la imagen está subida
 
 import { render } from '@react-email/components';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import {
-    InvoiceCanceledEmail,
-    InvoiceIssuedEmail,
-    PaymentDueEmail,
-    PaymentOverdueEmail,
-    PaymentReceivedEmail,
+  InvoiceCanceledEmail,
+  InvoiceIssuedEmail,
+  PaymentDueEmail,
+  PaymentOverdueEmail,
+  PaymentReceivedEmail,
 } from '../src/libs/email/templates/index.ts';
 
 // Output directory for generated previews
