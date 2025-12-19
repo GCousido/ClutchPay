@@ -1156,19 +1156,31 @@ main {
     font-family: inherit;
 }
 
-[data-theme="dark"] .modal-content input {
+.modal-content textarea {
+    padding: 0.8rem;
+    border: 2px solid var(--color-border);
+    border-radius: 10px;
+    font-size: 1rem;
+    font-family: inherit;
+    resize: vertical;
+}
+
+[data-theme="dark"] .modal-content input,
+[data-theme="dark"] .modal-content textarea {
     background: rgba(37, 45, 56, 0.6);
     border-color: rgba(134, 188, 36, 0.3);
     color: var(--color-text-primary);
 }
 
-.modal-content input:focus {
+.modal-content input:focus,
+.modal-content textarea:focus {
     outline: none;
     border-color: var(--color-primary);
 }
 
 /* Error state for modal inputs */
-.modal-content .input-error {
+.modal-content .input-error,
+.modal-content textarea.input-error {
     border-color: #ef4444 !important;
     box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1) !important;
 }
@@ -1180,13 +1192,15 @@ main {
     display: block;
 }
 
-[data-theme="dark"] .modal-content input:focus {
+[data-theme="dark"] .modal-content input:focus,
+[data-theme="dark"] .modal-content textarea:focus {
     background: rgba(30, 37, 48, 0.8);
     border-color: var(--color-primary);
     box-shadow: 0 0 0 3px rgba(134, 188, 36, 0.2);
 }
 
-[data-theme="dark"] .modal-content .input-error {
+[data-theme="dark"] .modal-content .input-error,
+[data-theme="dark"] .modal-content textarea.input-error {
     border-color: #f87171 !important;
     box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.15) !important;
 }
