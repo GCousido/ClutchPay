@@ -499,7 +499,6 @@ TEST_DATABASE_URL=postgresql://clutchpay_user:clutchpay_pass@localhost:5432/clut
 # Application URLs
 # ============================================================================
 NEXT_PUBLIC_API_URL=http://localhost:$backendPort
-NEXT_PUBLIC_APP_URL=http://localhost:$backendPort
 NEXTAUTH_URL=http://localhost:$backendPort
 
 # ============================================================================
