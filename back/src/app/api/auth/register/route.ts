@@ -1,6 +1,7 @@
 // app/api/auth/register/route.ts
+import { BadRequestError, handleError } from "@/libs/api-helpers";
 import { db } from "@/libs/db";
-import { formatZodError } from "@/libs/validations";
+import { logger } from "@/libs/logger";
 import { userCreateSchema } from '@/libs/validations/user';
 import { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
@@ -16,18 +17,13 @@ import { NextResponse } from "next/server";
  */
 export async function POST(request: Request) {
   try {
+    logger.debug('Auth', 'POST /api/auth/register - Registration attempt');
     const body = await request.json();
 
     // Validate with Zod
     const parsed = userCreateSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json(
-        {
-          message: "Validation failed",
-          errors: formatZodError(parsed.error),
-        },
-        { status: 400 }
-      );
+      throw parsed.error;
     }
 
     const data = parsed.data;
@@ -38,17 +34,13 @@ export async function POST(request: Request) {
     });
 
     if (existing) {
-      return NextResponse.json(
-        {
-          message: "Email already exists",
-          errors: { email: "Email already in use" },
-        },
-        { status: 400 }
-      );
+      logger.debug('Auth', 'Registration failed - email already in use', { email: data.email });
+      throw new BadRequestError('Cannot create user - email already in use');
     }
 
     // Hash Password
     const hashedPassword = await bcrypt.hash(data.password, 10);
+    logger.debug('Auth', 'Password hashed, creating user');
 
     // Create user - catch unique constraint error (P2002) to handle race conditions
     let newUser;
@@ -71,13 +63,7 @@ export async function POST(request: Request) {
         error.code === "P2002" &&
         (error.meta?.target as string[] || []).includes("email")
       ) {
-        return NextResponse.json(
-          {
-            message: "Email already exists",
-            errors: { email: "Email already in use" },
-          },
-          { status: 400 }
-        );
+        throw new BadRequestError('Cannot create user - email already in use');
       }
       throw error;
     }
@@ -86,15 +72,10 @@ export async function POST(request: Request) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _, ...user } = newUser;
 
+    logger.info('Auth', 'User registered successfully', { userId: user.id, email: user.email });
+
     return NextResponse.json(user, { status: 201 });
-  } catch (error: any) {
-    console.error("Register error:", error);
-    return NextResponse.json(
-      {
-        message: "Internal server error",
-        details: error?.message,
-      },
-      { status: 500 }
-    );
+  } catch (error) {
+    return handleError(error);
   }
 }

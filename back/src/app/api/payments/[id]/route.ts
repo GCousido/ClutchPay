@@ -1,6 +1,7 @@
 // app/api/payments/[id]/route.ts
-import { handleError, requireAuth } from '@/libs/api-helpers';
+import { BadRequestError, ForbiddenError, handleError, NotFoundError, requireAuth } from '@/libs/api-helpers';
 import { db } from '@/libs/db';
+import { logger } from '@/libs/logger';
 import { NextResponse } from 'next/server';
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -50,8 +51,11 @@ export async function GET(request: Request, context: RouteParams) {
 		const { id } = await context.params;
 
 		const paymentId = parseInt(id, 10);
+
+		logger.debug('Payments', 'GET /api/payments/:id - Fetching payment details', { paymentId, requestedBy: sessionUser.id });
+
 		if (isNaN(paymentId) || paymentId <= 0) {
-			return NextResponse.json({ message: 'Invalid payment ID' }, { status: 400 });
+			throw new BadRequestError('Cannot parse payment ID');
 		}
 
 		const payment = await db.payment.findUnique({
@@ -105,7 +109,7 @@ export async function GET(request: Request, context: RouteParams) {
 		});
 
 		if (!payment) {
-			return NextResponse.json({ message: 'Payment not found' }, { status: 404 });
+			throw new NotFoundError('Payment not found');
 		}
 
 		// Check authorization: only payer (debtor) or receiver (issuer) can view
@@ -113,10 +117,7 @@ export async function GET(request: Request, context: RouteParams) {
 		const isIssuer = payment.invoice.issuerUserId === sessionUser.id;
 
 		if (!isDebtor && !isIssuer) {
-			return NextResponse.json(
-				{ message: 'You do not have permission to view this payment' },
-				{ status: 403 }
-			);
+			throw new ForbiddenError('Forbidden');
 		}
 
 		return NextResponse.json(payment);

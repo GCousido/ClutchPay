@@ -1,7 +1,9 @@
 // app/api/invoices/route.ts
-import { getPagination, handleError, requireAuth, validateBody } from '@/libs/api-helpers';
+import { BadRequestError, ForbiddenError, getPagination, handleError, NotFoundError, requireAuth, validateBody } from '@/libs/api-helpers';
 import { getSignedPdfUrl, uploadPdf } from '@/libs/cloudinary';
 import { db } from '@/libs/db';
+import { logger } from '@/libs/logger';
+import { notifyInvoiceIssued } from '@/libs/notifications';
 import { invoiceCreateSchema, invoiceListQuerySchema } from '@/libs/validations/invoice';
 import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
@@ -17,6 +19,8 @@ import { NextResponse } from 'next/server';
 export async function GET(request: Request) {
 	try {
 		const sessionUser = await requireAuth();
+
+		logger.debug('Invoices', 'GET /api/invoices - Listing invoices', { userId: sessionUser.id });
 
 		const searchParams = new URL(request.url).searchParams;
 		const filters = invoiceListQuerySchema.parse(Object.fromEntries(searchParams));
@@ -95,6 +99,8 @@ export async function GET(request: Request) {
 				: null
 		}));
 
+		logger.debug('Invoices', 'Invoices list retrieved', { total, page, role: filters.role });
+
 		return NextResponse.json({
 			meta: {
 				total,
@@ -125,16 +131,18 @@ export async function POST(request: Request) {
 	try {
 		const sessionUser = await requireAuth();
 
+		logger.debug('Invoices', 'POST /api/invoices - Creating invoice', { issuerId: sessionUser.id });
+
 		const body = await request.json();
 		const parsed = validateBody(invoiceCreateSchema, body);
 
 		if (parsed.issuerUserId !== sessionUser.id) {
 			// Enforce that the current user can only issue invoices on their own behalf
-			return NextResponse.json({ message: 'You can only issue invoices as yourself' }, { status: 403 });
+			throw new ForbiddenError('Forbidden');
 		}
 
 		if (parsed.debtorUserId === sessionUser.id) {
-			return NextResponse.json({ message: 'You cannot issue an invoice to yourself' }, { status: 400 });
+			throw new BadRequestError('Cannot issue an invoice to yourself');
 		}
 
 		const debtorExists = await db.user.findUnique({
@@ -143,7 +151,7 @@ export async function POST(request: Request) {
 		});
 
 		if (!debtorExists) {
-			return NextResponse.json({ message: 'Debtor not found' }, { status: 404 });
+			throw new NotFoundError('Debtor not found');
 		}
 
 		// Upload PDF to Cloudinary
@@ -162,24 +170,32 @@ export async function POST(request: Request) {
 				dueDate: parsed.dueDate ? new Date(parsed.dueDate) : null,
 				invoicePdfUrl,
 			},
-			select: {
-				id: true,
-				invoiceNumber: true,
-				issuerUserId: true,
-				debtorUserId: true,
-				subject: true,
-				description: true,
-				amount: true,
-				status: true,
-				issueDate: true,
-				dueDate: true,
-				invoicePdfUrl: true,
-				createdAt: true,
-				updatedAt: true,
+			include: {
+				issuerUser: true,
+				debtorUser: true,
 			},
 		});
 
-		return NextResponse.json(invoice, { status: 201 });
+		// Create notification for debtor about the new invoice
+		try {
+			await notifyInvoiceIssued(invoice);
+		} catch (notificationError) {
+			// Log but don't fail the request if notification creation fails
+			logger.error('Invoice', 'Failed to create notification on invoice create', notificationError);
+		}
+
+		// Return only the invoice data without user relations
+		const { issuerUser, debtorUser, ...invoiceData } = invoice;
+
+		logger.info('Invoices', 'Invoice created successfully', { 
+			invoiceId: invoice.id, 
+			invoiceNumber: invoice.invoiceNumber,
+			issuerId: invoice.issuerUserId,
+			debtorId: invoice.debtorUserId,
+			amount: invoice.amount.toString()
+		});
+
+		return NextResponse.json(invoiceData, { status: 201 });
 	} catch (error) {
 		return handleError(error);
 	}

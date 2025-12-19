@@ -1,4 +1,6 @@
 // libs/paypal.ts
+import { InternalServerError } from '@/libs/api-helpers';
+import { logger } from '@/libs/logger';
 import payoutsSdk from '@paypal/payouts-sdk';
 
 /**
@@ -91,7 +93,7 @@ export async function createPayPalPayout(params: CreatePayoutParams): Promise<Pa
   try {
     // Check if PayPal credentials are configured
     if (!process.env.PAYPAL_CLIENT_ID || !process.env.PAYPAL_CLIENT_SECRET) {
-      console.warn('[PayPal Payout] PayPal credentials not configured. Simulating payout.');
+      logger.warn('PayPal Payout', 'PayPal credentials not configured, simulating payout');
       return simulatePayPalPayout(params, senderBatchId);
     }
 
@@ -119,7 +121,7 @@ export async function createPayPalPayout(params: CreatePayoutParams): Promise<Pa
     const response = await getPayPalClient().execute<payoutsSdk.payouts.PayoutCreateResponse>(request);
     const result = response.result;
     
-    console.log('[PayPal Payout] Batch created:', {
+    logger.info('PayPal Payout', 'Batch created', {
       batchId: result.batch_header?.payout_batch_id,
       status: result.batch_header?.batch_status,
       receiver: receiverEmail,
@@ -135,15 +137,15 @@ export async function createPayPalPayout(params: CreatePayoutParams): Promise<Pa
       transactionStatus: result.items?.[0]?.transaction_status,
     };
   } catch (error: any) {
-    console.error('[PayPal Payout] Error creating payout:', error);
+    logger.error('PayPal Payout', 'Error creating payout', error);
     
     // If it's an API error, extract details
     if (error.result) {
       const apiError = error.result;
-      throw new Error(`PayPal payout failed: ${apiError.message || apiError.name || 'Unknown error'}`);
+      throw new InternalServerError(`PayPal payout failed: ${apiError.message || apiError.name || 'Unknown error'}`);
     }
     
-    throw new Error(`PayPal payout failed: ${error.message}`);
+    throw new InternalServerError(`PayPal payout failed: ${error.message}`);
   }
 }
 
@@ -153,7 +155,7 @@ export async function createPayPalPayout(params: CreatePayoutParams): Promise<Pa
 function simulatePayPalPayout(params: CreatePayoutParams, batchId: string): PayPalPayoutResult {
   const decimalAmount = (params.amount / 100).toFixed(2);
   
-  console.log('[PayPal Payout] SIMULATED payout:', {
+  logger.info('PayPal Payout', 'SIMULATED payout (credentials not configured)', {
     receiver: params.receiverEmail,
     amount: decimalAmount,
     currency: params.currency.toUpperCase(),
@@ -205,8 +207,8 @@ export async function getPayoutStatus(payoutBatchId: string): Promise<{
       })),
     };
   } catch (error: any) {
-    console.error('[PayPal Payout] Error getting payout status:', error);
-    throw new Error(`Failed to get payout status: ${error.message}`);
+    logger.error('PayPal Payout', 'Error getting payout status', error);
+    throw new InternalServerError(`Failed to get payout status: ${error.message}`);
   }
 }
 

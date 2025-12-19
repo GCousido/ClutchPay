@@ -1,9 +1,9 @@
 // tests/libs/validations/invoice.test.ts
 import {
-    invoiceCreateSchema,
-    invoiceListQuerySchema,
-    invoiceStatusUpdateSchema,
-    invoiceUpdateSchema,
+  invoiceCreateSchema,
+  invoiceListQuerySchema,
+  invoiceStatusUpdateSchema,
+  invoiceUpdateSchema,
 } from '@/libs/validations/invoice';
 import { InvoiceStatus } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
@@ -18,6 +18,7 @@ describe('Invoice Validations', () => {
       description: 'Full stack web development for company website including frontend and backend',
       amount: 1500.00,
       issueDate: '2024-01-15T10:00:00Z',
+      dueDate: '2024-02-15T10:00:00Z',
       invoicePdf: 'data:application/pdf;base64,JVBERi0xLjQKJdP...',
     };
 

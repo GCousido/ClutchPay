@@ -1,7 +1,9 @@
 // app/api/invoices/[id]/route.ts
-import { handleError, requireAuth, validateBody } from '@/libs/api-helpers';
+import { BadRequestError, handleError, NotFoundError, requireAuth, validateBody } from '@/libs/api-helpers';
 import { deletePdf, extractPublicId, getSignedPdfUrl, uploadPdf } from '@/libs/cloudinary';
 import { db } from '@/libs/db';
+import { logger } from '@/libs/logger';
+import { notifyInvoiceCanceled } from '@/libs/notifications';
 import { invoiceUpdateSchema } from '@/libs/validations/invoice';
 import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
@@ -82,8 +84,10 @@ export async function GET(
 
 		const invoiceId = Number(contextResolved.id);
 
+		logger.debug('Invoices', 'GET /api/invoices/:id - Fetching invoice', { invoiceId, requestedBy: sessionUser.id });
+
 		if (Number.isNaN(invoiceId)) {
-			return NextResponse.json({ message: 'Invalid invoice id' }, { status: 400 });
+			throw new BadRequestError('Cannot parse invoice id');
 		}
 
 		const invoice = await db.invoice.findFirst({
@@ -95,8 +99,10 @@ export async function GET(
 				],
 			},
 			select: invoiceSelect,
-		});		if (!invoice) {
-			return NextResponse.json({ message: 'Invoice not found' }, { status: 404 });
+		});
+
+		if (!invoice) {
+			throw new NotFoundError('Invoice not found');
 		}
 		// Generate signed URL for PDF if exists
 		if (invoice.invoicePdfUrl) {
@@ -131,8 +137,10 @@ export async function PUT(
         const contextResolved = await context.params;
 		const invoiceId = Number(contextResolved.id);
 
+		logger.debug('Invoices', 'PUT /api/invoices/:id - Updating invoice', { invoiceId, requestedBy: sessionUser.id });
+
 		if (Number.isNaN(invoiceId)) {
-			return NextResponse.json({ message: 'Invalid invoice id' }, { status: 400 });
+			throw new BadRequestError('Cannot parse invoice id');
 		}
 
 		const invoice = await db.invoice.findUnique({
@@ -146,11 +154,12 @@ export async function PUT(
 		});
 
 		if (!invoice || invoice.issuerUserId !== sessionUser.id) {
-			return NextResponse.json({ message: 'Invoice not found' }, { status: 404 });
+			throw new NotFoundError('Invoice not found');
 		}
 
 		if (invoice.payment) {
-			return NextResponse.json({ message: 'Invoices with payments cannot be modified' }, { status: 400 });
+			logger.debug('Invoices', 'Cannot update invoice with existing payment', { invoiceId });
+			throw new BadRequestError('Cannot modify invoices with payments');
 		}
 
 		const body = await request.json();
@@ -181,6 +190,8 @@ export async function PUT(
 			select: invoiceSelect,
 		});
 
+		logger.info('Invoices', 'Invoice updated successfully', { invoiceId, updatedFields: Object.keys(data) });
+
 		return NextResponse.json(updated);
 	} catch (error) {
 		return handleError(error);
@@ -207,26 +218,36 @@ export async function DELETE(
         const contextResolved = await context.params;
 		const invoiceId = Number(contextResolved.id);
 
+		logger.debug('Invoices', 'DELETE /api/invoices/:id - Canceling invoice', { invoiceId, requestedBy: sessionUser.id });
+
 		if (Number.isNaN(invoiceId)) {
-			return NextResponse.json({ message: 'Invalid invoice id' }, { status: 400 });
+			throw new BadRequestError('Cannot parse invoice id');
 		}
 
 		const invoice = await db.invoice.findUnique({
 			where: { id: invoiceId },
-			select: {
-				issuerUserId: true,
-                debtorUserId: true,
-				invoicePdfUrl: true,
-				payment: { select: { id: true } },
+			include: {
+				issuerUser: true,
+				debtorUser: true,
+				payment: true,
 			},
 		});
 
-		if (!invoice || invoice.issuerUserId !== sessionUser.id) {
-			return NextResponse.json({ message: 'Invoice not found' }, { status: 404 });
+		if (!invoice || invoice.issuerUserId !== sessionUser.id) { 
+			throw new NotFoundError('Invoice not found');
 		}
 
 		if (invoice.payment) {
-			return NextResponse.json({ message: 'Invoices with payments cannot be cancelled' }, { status: 400 });
+			logger.debug('Invoices', 'Cannot cancel invoice with existing payment', { invoiceId });
+			throw new BadRequestError('Cannot cancel invoices with payments');
+		}
+
+		// Create notification for debtor about the cancellation before deleting
+		try {
+			await notifyInvoiceCanceled(invoice);
+		} catch (notificationError) {
+			// Log but don't fail the request if notification creation fails
+			logger.error('Invoice', 'Failed to create notification on invoice delete', notificationError);
 		}
 
         // Delete PDF from Cloudinary
@@ -237,9 +258,10 @@ export async function DELETE(
 			}
 		}
 
-        // Delete invoice
+        // Delete invoice (this will cascade delete notifications related to this invoice)
 		await db.invoice.delete({ where: { id: invoiceId } });
 
+		logger.info('Invoices', 'Invoice canceled successfully', { invoiceId, invoiceNumber: invoice.invoiceNumber });
 
 		return NextResponse.json({ message: 'Invoice cancelled' }, { status: 200 });
 	} catch (error) {

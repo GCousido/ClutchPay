@@ -1,4 +1,6 @@
 // libs/stripe.ts
+import { InternalServerError } from '@/libs/api-helpers';
+import { logger } from '@/libs/logger';
 import Stripe from 'stripe';
 
 /**
@@ -7,10 +9,14 @@ import Stripe from 'stripe';
  * Required environment variables:
  * - STRIPE_SECRET_KEY: Your Stripe secret API key
  * - STRIPE_WEBHOOK_SECRET: Webhook signing secret for verifying events
- * - NEXT_PUBLIC_APP_URL: Base URL of the application (for redirect URLs)
+ * - FRONTEND_URL: Base URL of the frontend application (for fallback redirect URLs)
+ * 
+ * Note: apiVersion is pinned to match the stripe package version in package.json.
+ * When updating the stripe package, check the corresponding apiVersion at:
+ * https://github.com/stripe/stripe-node/blob/vX.X.X/src/apiVersion.ts
  */
 export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-11-17.clover',
+  apiVersion: '2025-02-24.acacia',
   typescript: true,
 });
 
@@ -92,7 +98,9 @@ export async function createCheckoutSession(params: {
     cancelUrl,
   } = params;
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+  logger.debug('Stripe', 'Creating checkout session', { invoiceId, invoiceNumber, amount, currency, payerId, receiverId });
 
   // Create Stripe Checkout Session
   // Currently configured to use PayPal as the only payment method
@@ -127,8 +135,10 @@ export async function createCheckoutSession(params: {
   });
 
   if (!session.url) {
-    throw new Error('Failed to create Stripe checkout session: No URL returned');
+    throw new InternalServerError('Failed to create Stripe checkout session: No URL returned');
   }
+
+  logger.debug('Stripe', 'Checkout session created', { sessionId: session.id, invoiceId });
 
   return {
     sessionId: session.id,
@@ -182,7 +192,7 @@ export function verifyWebhookSignature(payload: string, signature: string): Stri
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   
   if (!webhookSecret) {
-    throw new Error('STRIPE_WEBHOOK_SECRET is not configured');
+    throw new InternalServerError('STRIPE_WEBHOOK_SECRET is not configured');
   }
 
   return stripe.webhooks.constructEvent(payload, signature, webhookSecret);

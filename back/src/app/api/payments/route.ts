@@ -1,6 +1,7 @@
 // app/api/payments/route.ts
 import { getPagination, handleError, requireAuth } from '@/libs/api-helpers';
 import { db } from '@/libs/db';
+import { logger } from '@/libs/logger';
 import { paymentListQuerySchema } from '@/libs/validations/payment';
 import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
@@ -33,6 +34,8 @@ import { NextResponse } from 'next/server';
 export async function GET(request: Request) {
 	try {
 		const sessionUser = await requireAuth();
+
+		logger.debug('Payments', 'GET /api/payments - Listing payments', { userId: sessionUser.id });
 
 		const searchParams = new URL(request.url).searchParams;
 		const filters = paymentListQuerySchema.parse(Object.fromEntries(searchParams));
@@ -112,6 +115,8 @@ export async function GET(request: Request) {
 		]);
 
 		const totalPages = Math.max(1, Math.ceil(total / limit));
+
+		logger.debug('Payments', 'Payments list retrieved', { total, page, role: filters.role });
 
 		return NextResponse.json({
 			meta: {

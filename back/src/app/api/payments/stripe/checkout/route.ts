@@ -1,6 +1,7 @@
 // app/api/payments/stripe/checkout/route.ts
-import { handleError, requireAuth, validateBody } from '@/libs/api-helpers';
+import { BadRequestError, ForbiddenError, handleError, NotFoundError, requireAuth, validateBody } from '@/libs/api-helpers';
 import { db } from '@/libs/db';
+import { logger } from '@/libs/logger';
 import { createCheckoutSession, toCents } from '@/libs/stripe';
 import { stripeCheckoutCreateSchema } from '@/libs/validations/stripe';
 import { InvoiceStatus } from '@prisma/client';
@@ -40,6 +41,8 @@ export async function POST(request: Request) {
   try {
     const sessionUser = await requireAuth();
 
+    logger.debug('Stripe', 'POST /api/payments/stripe/checkout - Creating checkout session', { userId: sessionUser.id });
+
     const body = await request.json();
     const parsed = validateBody(stripeCheckoutCreateSchema, body);
 
@@ -78,34 +81,22 @@ export async function POST(request: Request) {
     });
 
     if (!invoice) {
-      return NextResponse.json(
-        { message: 'Invoice not found' },
-        { status: 404 }
-      );
+      throw new NotFoundError('Invoice not found');
     }
 
     // Only the debtor can pay the invoice
     if (invoice.debtorUserId !== sessionUser.id) {
-      return NextResponse.json(
-        { message: 'You can only pay invoices where you are the debtor' },
-        { status: 403 }
-      );
+      throw new ForbiddenError();
     }
 
     // Check if invoice is already paid
     if (invoice.payment) {
-      return NextResponse.json(
-        { message: 'This invoice has already been paid' },
-        { status: 400 }
-      );
+      throw new BadRequestError('This invoice has already been paid');
     }
 
     // Check if invoice is in a payable status. TODO: overdue?
     if (invoice.status !== InvoiceStatus.PENDING && invoice.status !== InvoiceStatus.OVERDUE) {
-      return NextResponse.json(
-        { message: `Cannot pay an invoice with status: ${invoice.status}. Only PENDING or OVERDUE invoices can be paid` },
-        { status: 400 }
-      );
+      throw new BadRequestError(`Cannot pay an invoice with status: ${invoice.status}. Only PENDING or OVERDUE invoices can be paid`);
     }
 
     // Convert amount to cents for Stripe
@@ -124,6 +115,12 @@ export async function POST(request: Request) {
       receiverEmail: invoice.issuerUser.email,
       successUrl: parsed.successUrl,
       cancelUrl: parsed.cancelUrl,
+    });
+
+    logger.info('Stripe', 'Checkout session created', { 
+      sessionId: checkoutSession.sessionId, 
+      invoiceId: invoice.id, 
+      amount: invoice.amount.toString() 
     });
 
     return NextResponse.json({

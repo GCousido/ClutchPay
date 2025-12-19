@@ -1,7 +1,8 @@
 // app/api/users/[id]/route.ts
-import { handleError, requireAuth, requireSameUser, validateBody } from '@/libs/api-helpers';
+import { BadRequestError, handleError, requireAuth, requireSameUser, validateBody } from '@/libs/api-helpers';
 import { deleteImage, extractPublicId, uploadImage } from '@/libs/cloudinary';
 import { db } from '@/libs/db';
+import { logger } from '@/libs/logger';
 import { userUpdateSchema } from '@/libs/validations';
 import { NextResponse } from 'next/server';
 
@@ -22,8 +23,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const resolvedParams = await params;
     const userId = Number(resolvedParams.id)
 
+    logger.debug('Users', 'GET /api/users/:id - Fetching user profile', { userId, requestedBy: sessionUser.id });
+
     if (Number.isNaN(userId)) {
-      return NextResponse.json({ message: 'Invalid user id' }, { status: 400 });
+      throw new BadRequestError('Invalid user id format');
     }
 
     requireSameUser(sessionUser.id, userId);
@@ -69,8 +72,10 @@ export async function PUT(
     const resolvedParams = await params;
     const userId = Number(resolvedParams.id);
 
+    logger.debug('Users', 'PUT /api/users/:id - Updating user profile', { userId, requestedBy: sessionUser.id });
+
     if (Number.isNaN(userId)) {
-      return NextResponse.json({ message: 'Invalid user id' }, { status: 400 });
+      throw new BadRequestError('Invalid user id format');
     }
 
     requireSameUser(sessionUser.id, userId);
@@ -83,6 +88,7 @@ export async function PUT(
     let oldImagePublicId: string | null = null;
 
     if (validated.imageBase64) {
+      logger.debug('Users', 'Processing profile image upload', { userId });
       // Get current user to check for existing image
       const currentUser = await db.user.findUnique({
         where: { id: userId },
@@ -103,7 +109,7 @@ export async function PUT(
         try {
           await deleteImage(oldImagePublicId);
         } catch (error) {
-          console.warn('Failed to delete old image:', error);
+          logger.warn('User', 'Failed to delete old profile image', { publicId: oldImagePublicId, error });
           // Don't fail the request if old image deletion fails
         }
       }
@@ -119,6 +125,8 @@ export async function PUT(
         ...(imageUrl !== undefined && { imageUrl }),
       },
     });
+
+    logger.info('Users', 'User profile updated', { userId, fieldsUpdated: Object.keys(updateData) });
     
     return NextResponse.json(updated);
   } catch (error) {
