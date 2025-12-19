@@ -93,6 +93,20 @@ jobs:
         working-directory: ./back
         env:
           RUN_INTEGRATION_TESTS: 'true'
+          # Stripe integration
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_CURRENCY: 'eur'
+          # PayPal integration
+          PAYPAL_CLIENT_ID: ${{ secrets.PAYPAL_CLIENT_ID }}
+          PAYPAL_CLIENT_SECRET: ${{ secrets.PAYPAL_CLIENT_SECRET }}
+          PAYPAL_MODE: 'sandbox'
+          # Resend integration
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM_EMAIL: 'onboarding@resend.dev'
+          # Cloudinary (already in .env but needed for integration tests)
+          NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+          NEXT_PUBLIC_CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
         run: pnpm test tests/libs/*-integration.test.ts
       
       - name: Upload coverage to Codecov

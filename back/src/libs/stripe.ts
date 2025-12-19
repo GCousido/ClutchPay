@@ -10,9 +10,13 @@ import Stripe from 'stripe';
  * - STRIPE_SECRET_KEY: Your Stripe secret API key
  * - STRIPE_WEBHOOK_SECRET: Webhook signing secret for verifying events
  * - FRONTEND_URL: Base URL of the frontend application (for fallback redirect URLs)
+ * 
+ * Note: apiVersion is pinned to match the stripe package version in package.json.
+ * When updating the stripe package, check the corresponding apiVersion at:
+ * https://github.com/stripe/stripe-node/blob/vX.X.X/src/apiVersion.ts
  */
 export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-11-17.clover',
+  apiVersion: '2025-02-24.acacia',
   typescript: true,
 });
 
