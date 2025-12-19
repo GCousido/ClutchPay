@@ -594,7 +594,7 @@ class DashboardInvoices {
 
                         <div class="form-group">
                             <label for="invoice-description" data-i18n="invoices.description">Descripción</label>
-                            <textarea id="invoice-description" name="description" rows="3" 
+                            <textarea id="invoice-description" name="description" rows="3" required minlength="10"
                                       placeholder="Detalle de los servicios prestados..."></textarea>
                         </div>
 
@@ -714,7 +714,7 @@ class DashboardInvoices {
                 issuerUserId: parseInt(this.core.currentUser.id),
                 debtorUserId: parseInt(formData.get('debtorUserId')),
                 subject: formData.get('subject'),
-                description: formData.get('description') || 'Sin descripción',
+                description: (formData.get('description') || '').trim() || 'Sin descripción proporcionada',
                 amount: parseFloat(formData.get('amount')),
                 issueDate: new Date(formData.get('issueDate')).toISOString(),
                 dueDate: formData.get('dueDate') ? new Date(formData.get('dueDate')).toISOString() : null,
@@ -755,6 +755,10 @@ class DashboardInvoices {
                         if (field === 'debtorUserId') inputId = 'debtor-user';
                         if (field === 'issueDate') inputId = 'issue-date';
                         if (field === 'dueDate') inputId = 'due-date';
+                        if (field === 'description') inputId = 'invoice-description';
+                        if (field === 'subject') inputId = 'invoice-subject';
+                        if (field === 'amount') inputId = 'invoice-amount';
+                        if (field === 'invoicePdf') inputId = 'invoice-pdf';
                         
                         const input = form.querySelector(`#${inputId}`);
                         if (input) {
