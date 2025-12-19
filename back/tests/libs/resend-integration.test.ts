@@ -1,6 +1,6 @@
 // tests/libs/resend-integration.test.ts
 import { Resend } from 'resend';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 const runIntegration =
   !!process.env.RESEND_API_KEY &&
@@ -9,8 +9,14 @@ const runIntegration =
 (runIntegration ? describe : describe.skip)('Resend Integration (real)', () => {
   let resend: Resend;
 
+  const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
   beforeAll(() => {
     resend = new Resend(process.env.RESEND_API_KEY!);
+  });
+
+  beforeEach(async () => {
+    await delay(1000); 
   });
 
   it('verifies Resend API key is valid', async () => {
