@@ -141,15 +141,35 @@ DEFAULT_INSTALL_DIR="/opt/clutchpay"
 BACKEND_SUBDIR="back"
 DEFAULT_BACKEND_PORT=3000
 DEFAULT_FRONTEND_PORT=80
+DEFAULT_APACHE_DOC_ROOT="/var/www/clutchpay"
 
 # Repository Configuration
 REPO_URL="https://github.com/GCousido/ClutchPay.git"
-REPO_TAG="main"  # Development branch - change to release tag for production
+REPO_TAG="main"
 
-# Database credentials (from .env defaults)
+# Database credentials
 DB_NAME="clutchpay_db"
 DB_USER="clutchpay_user"
 DB_PASSWORD="clutchpay_pass"
+
+# Cloudinary Configuration (default/demo values)
+DEFAULT_CLOUDINARY_CLOUD_NAME="clutchpay"
+DEFAULT_CLOUDINARY_API_KEY="316689144486275"
+DEFAULT_CLOUDINARY_API_SECRET="7OboPECLxjrFxAsY0C4uFk9ny3A"
+
+# Stripe Configuration (default/demo values)
+DEFAULT_STRIPE_SECRET_KEY="sk_test_51SQ5cSEQw6cS1wslacjOFWC71OCDCWCwKANLLooFGacdqBbGCL4Pj9QQ9zSThHY6lnO5RhrwOI1SAiqxtiSXHrzY00NRizkVHu"
+DEFAULT_STRIPE_WEBHOOK_SECRET=""
+DEFAULT_STRIPE_CURRENCY="eur"
+
+# PayPal Configuration (default/demo values)
+DEFAULT_PAYPAL_CLIENT_ID="ASODKVIp2ZnaIoZKu8c2LR9be6P5ML-8e9dSfL53ovMAl1kkJNqb-y3mX8VD3vLtn9T13pVn3l2B3aAb"
+DEFAULT_PAYPAL_CLIENT_SECRET="EPt1xSA5nV3mh3YGQ3bS6F0TLXCL044aUgrFMD5crkSB_xy_INe_CDCPf5C-kJGN-ns97bIMt-PN6xUF"
+DEFAULT_PAYPAL_MODE="sandbox"
+
+# Email Configuration (default/demo values)
+DEFAULT_RESEND_API_KEY="re_T1GH3zFd_LeuawZWVLRZfZTT8ECVXJSjh"
+DEFAULT_RESEND_FROM_EMAIL="ClutchPay <no-reply@notifications.clutchpay.dev>"
 
 ################################################################################
 # Helper Functions (used by all installation modes)
@@ -548,23 +568,23 @@ FRONTEND_PORT=${frontend_port}
 SERVER_IP=${frontend_ip}
 
 # Cloudinary Configuration (configure with --config-cloudinary)
-NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=clutchpay
-NEXT_PUBLIC_CLOUDINARY_API_KEY=316689144486275
-CLOUDINARY_API_SECRET=7OboPECLxjrFxAsY0C4uFk9ny3A
+NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=${DEFAULT_CLOUDINARY_CLOUD_NAME}
+NEXT_PUBLIC_CLOUDINARY_API_KEY=${DEFAULT_CLOUDINARY_API_KEY}
+CLOUDINARY_API_SECRET=${DEFAULT_CLOUDINARY_API_SECRET}
 
 # Stripe Configuration (configure with --config-stripe)
-STRIPE_SECRET_KEY=sk_test_51SQ5cSEQw6cS1wslacjOFWC71OCDCWCwKANLLooFGacdqBbGCL4Pj9QQ9zSThHY6lnO5RhrwOI1SAiqxtiSXHrzY00NRizkVHu
-STRIPE_WEBHOOK_SECRET=
-STRIPE_CURRENCY=eur
+STRIPE_SECRET_KEY=${DEFAULT_STRIPE_SECRET_KEY}
+STRIPE_WEBHOOK_SECRET=${DEFAULT_STRIPE_WEBHOOK_SECRET}
+STRIPE_CURRENCY=${DEFAULT_STRIPE_CURRENCY}
 
 # PayPal Configuration (configure with --config-paypal)
-PAYPAL_CLIENT_ID=ASODKVIp2ZnaIoZKu8c2LR9be6P5ML-8e9dSfL53ovMAl1kkJNqb-y3mX8VD3vLtn9T13pVn3l2B3aAb
-PAYPAL_CLIENT_SECRET=EPt1xSA5nV3mh3YGQ3bS6F0TLXCL044aUgrFMD5crkSB_xy_INe_CDCPf5C-kJGN-ns97bIMt-PN6xUF
-PAYPAL_MODE=sandbox
+PAYPAL_CLIENT_ID=${DEFAULT_PAYPAL_CLIENT_ID}
+PAYPAL_CLIENT_SECRET=${DEFAULT_PAYPAL_CLIENT_SECRET}
+PAYPAL_MODE=${DEFAULT_PAYPAL_MODE}
 
 # Email Configuration - Resend (configure with --config-resend)
-RESEND_API_KEY=re_T1GH3zFd_LeuawZWVLRZfZTT8ECVXJSjh
-RESEND_FROM_EMAIL=onboarding@resend.dev # actualize to your verified Resend email
+RESEND_API_KEY=${DEFAULT_RESEND_API_KEY}
+RESEND_FROM_EMAIL="${DEFAULT_RESEND_FROM_EMAIL}"
 
 # Cron Job Security
 CRON_SECRET=$(openssl rand -base64 32)
@@ -620,15 +640,15 @@ setup_frontend_installation() {
     local frontend_port="$2"
     local backend_ip="$3"
     local backend_port="$4"
-    local apache_doc_root="/var/www/clutchpay"
+    local apache_doc_root="${DEFAULT_APACHE_DOC_ROOT}"
 
     log_header "Setting up Frontend"
 
     # Ask for Apache document root in interactive mode
     if [ "$INTERACTIVE_MODE" = true ]; then
-        echo -e "${YELLOW}Enter Apache document root (default: /var/www/clutchpay):${NC}"
+        echo -e "${YELLOW}Enter Apache document root (default: ${DEFAULT_APACHE_DOC_ROOT}):${NC}"
         read -r USER_APACHE_DOC_ROOT
-        apache_doc_root="${USER_APACHE_DOC_ROOT:-/var/www/clutchpay}"
+        apache_doc_root="${USER_APACHE_DOC_ROOT:-${DEFAULT_APACHE_DOC_ROOT}}"
     fi
     
     log_step "Using Apache document root: $apache_doc_root"
@@ -1003,15 +1023,6 @@ EOF
         done
     else
         log_info "Using default frontend port: $FRONTEND_PORT"
-        if check_port "80"; then
-            log_warning "Port 80 is in use!"
-            log_error "In non-interactive mode, the default port must be available."
-            log_info "Options:"
-            log_info "  1. Run with -i flag for interactive mode to choose a different port"
-            log_info "  2. Stop the service using port 80"
-            cleanup
-            exit 1
-        fi
     fi
     log_success "Frontend location: ${FRONTEND_IP}:${FRONTEND_PORT}"
 
@@ -1673,7 +1684,70 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
         
         # Only add missing variables, don't overwrite existing ones
         if [ -f "$BACKEND_DIR/.env" ]; then
+            # Database configuration
+            if ! grep -q "^POSTGRES_DB=" "$BACKEND_DIR/.env"; then
+                echo "POSTGRES_DB=${DB_NAME}" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing POSTGRES_DB"
+            fi
+            
+            if ! grep -q "^POSTGRES_USER=" "$BACKEND_DIR/.env"; then
+                echo "POSTGRES_USER=${DB_USER}" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing POSTGRES_USER"
+            fi
+            
+            if ! grep -q "^POSTGRES_PASSWORD=" "$BACKEND_DIR/.env"; then
+                echo "POSTGRES_PASSWORD=${DB_PASSWORD}" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing POSTGRES_PASSWORD"
+            fi
+            
+            if ! grep -q "^DATABASE_URL=" "$BACKEND_DIR/.env"; then
+                echo "DATABASE_URL=\"postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}?schema=public\"" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing DATABASE_URL"
+            fi
+            
+            # Server configuration
+            if ! grep -q "^NODE_ENV=" "$BACKEND_DIR/.env"; then
+                echo "NODE_ENV=production" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing NODE_ENV"
+            fi
+            
+            # Extract port from existing .env if available
+            EXISTING_PORT=$(grep -oP "^PORT=\K[0-9]+" "$BACKEND_DIR/.env" 2>/dev/null || echo "3000")
+            EXISTING_BACKEND_PORT=$(grep -oP "^BACKEND_PORT=\K[0-9]+" "$BACKEND_DIR/.env" 2>/dev/null || echo "$EXISTING_PORT")
+            
+            if ! grep -q "^PORT=" "$BACKEND_DIR/.env"; then
+                echo "PORT=${EXISTING_PORT}" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing PORT"
+            fi
+            
+            if ! grep -q "^BACKEND_PORT=" "$BACKEND_DIR/.env"; then
+                echo "BACKEND_PORT=${EXISTING_BACKEND_PORT}" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing BACKEND_PORT"
+            fi
+            
+            # Extract SERVER_IP from existing .env or detect it
+            EXISTING_SERVER_IP=$(grep -oP "^SERVER_IP=\K[^']+" "$BACKEND_DIR/.env" 2>/dev/null || hostname -I | awk '{print $1}')
+            
+            if ! grep -q "^NEXT_PUBLIC_API_URL=" "$BACKEND_DIR/.env"; then
+                echo "NEXT_PUBLIC_API_URL=http://${EXISTING_SERVER_IP}:${EXISTING_BACKEND_PORT}" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing NEXT_PUBLIC_API_URL"
+            fi
+            
             # Authentication secrets
+            if ! grep -q "^NEXTAUTH_URL=" "$BACKEND_DIR/.env"; then
+                echo "NEXTAUTH_URL=http://${EXISTING_SERVER_IP}:${EXISTING_BACKEND_PORT}" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing NEXTAUTH_URL"
+            fi
+            
             if ! grep -q "^NEXTAUTH_SECRET=" "$BACKEND_DIR/.env"; then
                 NEXTAUTH_SECRET=$(openssl rand -base64 32)
                 echo "NEXTAUTH_SECRET=${NEXTAUTH_SECRET}" >> "$BACKEND_DIR/.env"
@@ -1688,23 +1762,103 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
                 log_success "Added missing JWT_SECRET"
             fi
             
+            # Frontend configuration
+            EXISTING_FRONTEND_PORT=$(grep -oP "^FRONTEND_PORT=\K[0-9]+" "$BACKEND_DIR/.env" 2>/dev/null || echo "80")
+            
+            if ! grep -q "^FRONTEND_URL=" "$BACKEND_DIR/.env"; then
+                echo "FRONTEND_URL=http://${EXISTING_SERVER_IP}:${EXISTING_FRONTEND_PORT}" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing FRONTEND_URL"
+            fi
+            
+            if ! grep -q "^FRONTEND_PORT=" "$BACKEND_DIR/.env"; then
+                echo "FRONTEND_PORT=${EXISTING_FRONTEND_PORT}" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing FRONTEND_PORT"
+            fi
+            
+            if ! grep -q "^SERVER_IP=" "$BACKEND_DIR/.env"; then
+                echo "SERVER_IP=${EXISTING_SERVER_IP}" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing SERVER_IP"
+            fi
+            
             # Cloudinary configuration
             if ! grep -q "^NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=" "$BACKEND_DIR/.env"; then
-                echo "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=clutchpay" >> "$BACKEND_DIR/.env"
+                echo "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=${DEFAULT_CLOUDINARY_CLOUD_NAME}" >> "$BACKEND_DIR/.env"
                 ADDED_VARS=true
                 log_success "Added missing NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME"
             fi
             
             if ! grep -q "^NEXT_PUBLIC_CLOUDINARY_API_KEY=" "$BACKEND_DIR/.env"; then
-                echo "NEXT_PUBLIC_CLOUDINARY_API_KEY=316689144486275" >> "$BACKEND_DIR/.env"
+                echo "NEXT_PUBLIC_CLOUDINARY_API_KEY=${DEFAULT_CLOUDINARY_API_KEY}" >> "$BACKEND_DIR/.env"
                 ADDED_VARS=true
                 log_success "Added missing NEXT_PUBLIC_CLOUDINARY_API_KEY"
             fi
             
             if ! grep -q "^CLOUDINARY_API_SECRET=" "$BACKEND_DIR/.env"; then
-                echo "CLOUDINARY_API_SECRET=7OboPECLxjrFxAsY0C4uFk9ny3A" >> "$BACKEND_DIR/.env"
+                echo "CLOUDINARY_API_SECRET=${DEFAULT_CLOUDINARY_API_SECRET}" >> "$BACKEND_DIR/.env"
                 ADDED_VARS=true
                 log_success "Added missing CLOUDINARY_API_SECRET"
+            fi
+            
+            # Stripe configuration
+            if ! grep -q "^STRIPE_SECRET_KEY=" "$BACKEND_DIR/.env"; then
+                echo "STRIPE_SECRET_KEY=${DEFAULT_STRIPE_SECRET_KEY}" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing STRIPE_SECRET_KEY"
+            fi
+            
+            if ! grep -q "^STRIPE_WEBHOOK_SECRET=" "$BACKEND_DIR/.env"; then
+                echo "STRIPE_WEBHOOK_SECRET=${DEFAULT_STRIPE_WEBHOOK_SECRET}" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing STRIPE_WEBHOOK_SECRET"
+            fi
+            
+            if ! grep -q "^STRIPE_CURRENCY=" "$BACKEND_DIR/.env"; then
+                echo "STRIPE_CURRENCY=${DEFAULT_STRIPE_CURRENCY}" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing STRIPE_CURRENCY"
+            fi
+            
+            # PayPal configuration
+            if ! grep -q "^PAYPAL_CLIENT_ID=" "$BACKEND_DIR/.env"; then
+                echo "PAYPAL_CLIENT_ID=${DEFAULT_PAYPAL_CLIENT_ID}" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing PAYPAL_CLIENT_ID"
+            fi
+            
+            if ! grep -q "^PAYPAL_CLIENT_SECRET=" "$BACKEND_DIR/.env"; then
+                echo "PAYPAL_CLIENT_SECRET=${DEFAULT_PAYPAL_CLIENT_SECRET}" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing PAYPAL_CLIENT_SECRET"
+            fi
+            
+            if ! grep -q "^PAYPAL_MODE=" "$BACKEND_DIR/.env"; then
+                echo "PAYPAL_MODE=${DEFAULT_PAYPAL_MODE}" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing PAYPAL_MODE"
+            fi
+            
+            # Email configuration (Resend)
+            if ! grep -q "^RESEND_API_KEY=" "$BACKEND_DIR/.env"; then
+                echo "RESEND_API_KEY=${DEFAULT_RESEND_API_KEY}" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing RESEND_API_KEY"
+            fi
+            
+            if ! grep -q "^RESEND_FROM_EMAIL=" "$BACKEND_DIR/.env"; then
+                echo "RESEND_FROM_EMAIL=${DEFAULT_RESEND_FROM_EMAIL}" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing RESEND_FROM_EMAIL"
+            fi
+            
+            # Cron job security
+            if ! grep -q "^CRON_SECRET=" "$BACKEND_DIR/.env"; then
+                CRON_SECRET=$(openssl rand -base64 32)
+                echo "CRON_SECRET=${CRON_SECRET}" >> "$BACKEND_DIR/.env"
+                ADDED_VARS=true
+                log_success "Added missing CRON_SECRET"
             fi
             
             if [ "$ADDED_VARS" = false ]; then
@@ -1760,13 +1914,13 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
         log_header "Updating Frontend"
         
         # Determine Apache document root
-        APACHE_DOC_ROOT="/var/www/clutchpay"
+        APACHE_DOC_ROOT="${DEFAULT_APACHE_DOC_ROOT}"
         
         if [ "$INTERACTIVE_MODE" = true ]; then
             # Interactive mode: ask for frontend location
-            echo -e "${YELLOW}Enter the Apache document root for frontend (default: /var/www/clutchpay):${NC}"
+            echo -e "${YELLOW}Enter the Apache document root for frontend (default: ${DEFAULT_APACHE_DOC_ROOT}):${NC}"
             read -r USER_APACHE_DOC_ROOT
-            APACHE_DOC_ROOT="${USER_APACHE_DOC_ROOT:-/var/www/clutchpay}"
+            APACHE_DOC_ROOT="${USER_APACHE_DOC_ROOT:-${DEFAULT_APACHE_DOC_ROOT}}"
         fi
         
         # Verify frontend directory exists
@@ -1956,11 +2110,10 @@ config_frontend() {
     log_header "Configure Frontend - Backend Location"
     
     # Ask for frontend directory
-    DEFAULT_APACHE_DOC_ROOT="/var/www/clutchpay"
     echo -e "${YELLOW}Frontend directory (default: ${DEFAULT_APACHE_DOC_ROOT}):${NC}"
     read -r USER_FRONTEND_DIR
     
-    FRONTEND_DIR="${USER_FRONTEND_DIR:-$DEFAULT_APACHE_DOC_ROOT}"
+    FRONTEND_DIR="${USER_FRONTEND_DIR:-${DEFAULT_APACHE_DOC_ROOT}}"
     
     if [ ! -d "$FRONTEND_DIR" ]; then
         log_error "Frontend directory not found at $FRONTEND_DIR"
@@ -2391,10 +2544,10 @@ config_resend() {
     fi
     
     # Get From Email
-    echo -e "\n${YELLOW}Enter the 'From' email address (default: ClutchPay <noreply@clutchpay.com>):${NC}"
+    echo -e "\n${YELLOW}Enter the 'From' email address (default: ${DEFAULT_RESEND_FROM_EMAIL}):${NC}"
     echo -e "${BLUE}Note: The domain must be verified in your Resend dashboard${NC}"
     read -r RESEND_FROM_EMAIL
-    RESEND_FROM_EMAIL="${RESEND_FROM_EMAIL:-ClutchPay <noreply@clutchpay.com>}"
+    RESEND_FROM_EMAIL="${RESEND_FROM_EMAIL:-${DEFAULT_RESEND_FROM_EMAIL}}"
     
     # Final confirmation
     echo -e "\n${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
