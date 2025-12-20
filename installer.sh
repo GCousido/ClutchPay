@@ -145,7 +145,7 @@ DEFAULT_APACHE_DOC_ROOT="/var/www/clutchpay"
 
 # Repository Configuration
 REPO_URL="https://github.com/GCousido/ClutchPay.git"
-REPO_TAG="main"
+REPO_TAG="tercera-cuarta-entrega"
 
 # Database credentials
 DB_NAME="clutchpay_db"
