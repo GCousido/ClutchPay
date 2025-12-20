@@ -18,10 +18,6 @@
 #   ./installer.sh --update [tag]       # Update existing installation
 #   ./installer.sh --config-backend     # Configure backend to use new frontend location
 #   ./installer.sh --config-frontend    # Configure frontend to use new backend location
-#   ./installer.sh --config-stripe      # Configure Stripe payment credentials
-#   ./installer.sh --config-paypal      # Configure PayPal payout credentials
-#   ./installer.sh --config-resend      # Configure Resend email service
-#   ./installer.sh --config-cloudinary  # Configure Cloudinary image storage
 ################################################################################
 
 set -Eeuo pipefail  # Exit on error, unset vars, and fail pipelines
@@ -141,35 +137,15 @@ DEFAULT_INSTALL_DIR="/opt/clutchpay"
 BACKEND_SUBDIR="back"
 DEFAULT_BACKEND_PORT=3000
 DEFAULT_FRONTEND_PORT=80
-DEFAULT_APACHE_DOC_ROOT="/var/www/clutchpay"
 
 # Repository Configuration
 REPO_URL="https://github.com/GCousido/ClutchPay.git"
-REPO_TAG="main"
+REPO_TAG="segunda-entrega"
 
-# Database credentials
+# Database credentials (from .env defaults)
 DB_NAME="clutchpay_db"
 DB_USER="clutchpay_user"
 DB_PASSWORD="clutchpay_pass"
-
-# Cloudinary Configuration (default/demo values)
-DEFAULT_CLOUDINARY_CLOUD_NAME="clutchpay"
-DEFAULT_CLOUDINARY_API_KEY="316689144486275"
-DEFAULT_CLOUDINARY_API_SECRET="7OboPECLxjrFxAsY0C4uFk9ny3A"
-
-# Stripe Configuration (default/demo values)
-DEFAULT_STRIPE_SECRET_KEY=sk_test_51Sd8SjDL0gsWrXkk7we7vOqnlmxzpC1SqWN0A5GeuEJPHs2tr810MRxNvFhLMbNlOEgHGdba4ucXHUlJctf1TplT00nWEB2UF1
-DEFAULT_STRIPE_WEBHOOK_SECRET=""
-DEFAULT_STRIPE_CURRENCY="eur"
-
-# PayPal Configuration (default/demo values)
-DEFAULT_PAYPAL_CLIENT_ID=AWIctULK6TMTDwpyqYVRV1AAbCP5VwG6wDoeT1BN2clRgXhm6LcCR314Fcnt2wztLdhup7c-7RRmZZqG
-DEFAULT_PAYPAL_CLIENT_SECRET=EHpi4iZKbNgPqHpQNZy6p9nawfFh6g0W1fLQpTHUdWrEOx33duo7UNW1sUuxXGIsSP9kkRntdS1KP6sL
-DEFAULT_PAYPAL_MODE=sandbox
-
-# Email Configuration (default/demo values)
-DEFAULT_RESEND_API_KEY="re_T1GH3zFd_LeuawZWVLRZfZTT8ECVXJSjh"
-DEFAULT_RESEND_FROM_EMAIL="ClutchPay <no-reply@notifications.clutchpay.dev>"
 
 ################################################################################
 # Helper Functions (used by all installation modes)
@@ -231,13 +207,6 @@ clone_repository_with_permissions() {
         rm -rf "$target_dir" 2>/dev/null || true
         mkdir -p "$target_dir"
         git clone --depth 1 --branch "$git_tag" "$source_url" "$target_dir" 2>&1 | tail -3
-    fi
-    
-    # Remove development utilities directory (not needed for production)
-    if [ -d "$target_dir/utils_dev" ]; then
-        log_step "Removing development utilities (utils_dev)..."
-        $SUDO_CMD rm -rf "$target_dir/utils_dev"
-        log_success "Development utilities removed"
     fi
     
     REPO_CLONED=true
@@ -471,54 +440,6 @@ install_nodejs() {
     fi
 }
 
-################################################################################
-# Install Stripe CLI Function
-################################################################################
-install_stripe_cli() {
-    log_step "Checking for Stripe CLI..."
-    
-    if command -v stripe &> /dev/null; then
-        log_success "Stripe CLI already installed: $(stripe --version)"
-        return 0
-    fi
-    
-    log_step "Installing Stripe CLI..."
-    
-    # Download and install Stripe CLI for Debian/Ubuntu
-    # Method 1: Using the official Stripe package repository
-    if ! curl -s https://packages.stripe.dev/api/security/keypair/stripe-cli-gpg/public | gpg --dearmor 2>/dev/null | $SUDO_CMD tee /usr/share/keyrings/stripe.gpg > /dev/null; then
-        log_warning "Could not add Stripe GPG key via packages.stripe.dev, trying alternative method..."
-    fi
-    
-    # Add Stripe CLI repository
-    echo "deb [signed-by=/usr/share/keyrings/stripe.gpg] https://packages.stripe.dev/stripe-cli-debian-local stable main" | $SUDO_CMD tee /etc/apt/sources.list.d/stripe.list > /dev/null
-    
-    # Update and install
-    $SUDO_CMD apt-get update > /dev/null 2>&1
-    
-    if $SUDO_CMD apt-get install -y stripe > /dev/null 2>&1; then
-        log_success "Stripe CLI installed successfully: $(stripe --version)"
-        return 0
-    fi
-    
-    # Fallback: Direct binary download
-    log_warning "APT installation failed, downloading binary directly..."
-    
-    local STRIPE_CLI_URL="https://github.com/stripe/stripe-cli/releases/latest/download/stripe_linux_amd64.tar.gz"
-    
-    cd /tmp
-    if curl -sL "$STRIPE_CLI_URL" -o stripe_cli.tar.gz; then
-        tar -xzf stripe_cli.tar.gz
-        $SUDO_CMD mv stripe /usr/local/bin/stripe
-        $SUDO_CMD chmod +x /usr/local/bin/stripe
-        rm -f stripe_cli.tar.gz
-        log_success "Stripe CLI installed successfully: $(stripe --version)"
-        return 0
-    else
-        log_error "Failed to download Stripe CLI"
-        return 1
-    fi
-}
 
 ################################################################################
 # Helper function - Setup backend specific installation
@@ -567,27 +488,10 @@ FRONTEND_URL=http://${frontend_ip}:${frontend_port}
 FRONTEND_PORT=${frontend_port}
 SERVER_IP=${frontend_ip}
 
-# Cloudinary Configuration (configure with --config-cloudinary)
-NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=${DEFAULT_CLOUDINARY_CLOUD_NAME}
-NEXT_PUBLIC_CLOUDINARY_API_KEY=${DEFAULT_CLOUDINARY_API_KEY}
-CLOUDINARY_API_SECRET=${DEFAULT_CLOUDINARY_API_SECRET}
-
-# Stripe Configuration (configure with --config-stripe)
-STRIPE_SECRET_KEY=${DEFAULT_STRIPE_SECRET_KEY}
-STRIPE_WEBHOOK_SECRET=${DEFAULT_STRIPE_WEBHOOK_SECRET}
-STRIPE_CURRENCY=${DEFAULT_STRIPE_CURRENCY}
-
-# PayPal Configuration (configure with --config-paypal)
-PAYPAL_CLIENT_ID=${DEFAULT_PAYPAL_CLIENT_ID}
-PAYPAL_CLIENT_SECRET=${DEFAULT_PAYPAL_CLIENT_SECRET}
-PAYPAL_MODE=${DEFAULT_PAYPAL_MODE}
-
-# Email Configuration - Resend (configure with --config-resend)
-RESEND_API_KEY=${DEFAULT_RESEND_API_KEY}
-RESEND_FROM_EMAIL="${DEFAULT_RESEND_FROM_EMAIL}"
-
-# Cron Job Security
-CRON_SECRET=$(openssl rand -base64 32)
+# Cloudinary Configuration
+NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=clutchpay
+NEXT_PUBLIC_CLOUDINARY_API_KEY=316689144486275
+CLOUDINARY_API_SECRET=7OboPECLxjrFxAsY0C4uFk9ny3A
 EOF
     log_success "Backend .env created"
 
@@ -626,10 +530,6 @@ EOF
         cleanup; exit 1
     fi
     log_success "Backend built successfully"
-
-    # Install Stripe CLI for webhook handling (required for demo/development)
-    log_step "Installing Stripe CLI for webhook handling..."
-    install_stripe_cli || log_warning "Stripe CLI installation failed. You can install it manually later."
 }
 
 ################################################################################
@@ -640,15 +540,15 @@ setup_frontend_installation() {
     local frontend_port="$2"
     local backend_ip="$3"
     local backend_port="$4"
-    local apache_doc_root="${DEFAULT_APACHE_DOC_ROOT}"
+    local apache_doc_root="/var/www/clutchpay"
 
     log_header "Setting up Frontend"
 
     # Ask for Apache document root in interactive mode
     if [ "$INTERACTIVE_MODE" = true ]; then
-        echo -e "${YELLOW}Enter Apache document root (default: ${DEFAULT_APACHE_DOC_ROOT}):${NC}"
+        echo -e "${YELLOW}Enter Apache document root (default: /var/www/clutchpay):${NC}"
         read -r USER_APACHE_DOC_ROOT
-        apache_doc_root="${USER_APACHE_DOC_ROOT:-${DEFAULT_APACHE_DOC_ROOT}}"
+        apache_doc_root="${USER_APACHE_DOC_ROOT:-/var/www/clutchpay}"
     fi
     
     log_step "Using Apache document root: $apache_doc_root"
@@ -1023,6 +923,15 @@ EOF
         done
     else
         log_info "Using default frontend port: $FRONTEND_PORT"
+        if check_port "80"; then
+            log_warning "Port 80 is in use!"
+            log_error "In non-interactive mode, the default port must be available."
+            log_info "Options:"
+            log_info "  1. Run with -i flag for interactive mode to choose a different port"
+            log_info "  2. Stop the service using port 80"
+            cleanup
+            exit 1
+        fi
     fi
     log_success "Frontend location: ${FRONTEND_IP}:${FRONTEND_PORT}"
 
@@ -1056,12 +965,6 @@ EOF
     create_backend_service "$BACKEND_DIR"
 
     ################################################################################
-    # Configure Stripe Webhook
-    ################################################################################
-    # Use the unified config_stripe function in non-interactive mode
-    config_stripe "false" "$BACKEND_DIR" "$BACKEND_PORT" || log_info "Stripe webhook can be configured later with: ./installer.sh --config-stripe"
-
-    ################################################################################
     # Configure Firewall
     ################################################################################
     if command -v ufw &> /dev/null; then
@@ -1085,12 +988,6 @@ EOF
     echo -e "${CYAN}📂 Installation Directory:${NC} ${BACKEND_DIR}\n"
     echo -e "${CYAN}🗄️  Database:${NC} PostgreSQL - ${DB_NAME}\n"
     echo -e "${CYAN}🔧 Service:${NC} systemctl status clutchpay-backend\n"
-    
-    echo -e "${YELLOW}📌 Next Steps - Configure services:${NC}"
-    echo -e "  ${CYAN}./installer.sh --config-stripe${NC}      Configure Stripe payments"
-    echo -e "  ${CYAN}./installer.sh --config-paypal${NC}      Configure PayPal payouts"
-    echo -e "  ${CYAN}./installer.sh --config-resend${NC}      Configure email notifications"
-    echo -e "  ${CYAN}./installer.sh --config-cloudinary${NC}  Configure cloud storage\n"
 }
 
 ################################################################################
@@ -1448,12 +1345,6 @@ EOF
     create_backend_service "$BACKEND_DIR"
 
     ################################################################################
-    # Configure Stripe Webhook
-    ################################################################################
-    # Use the unified config_stripe function in non-interactive mode
-    config_stripe "false" "$BACKEND_DIR" "$BACKEND_PORT" || log_info "Stripe webhook can be configured later with: ./installer.sh --config-stripe"
-
-    ################################################################################
     # Configure Firewall (if ufw is installed)
     ################################################################################
     if command -v ufw &> /dev/null; then
@@ -1674,13 +1565,6 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
     
     log_success "Code updated to $UPDATE_TAG"
     
-    # Remove utils_dev directory (only needed for development)
-    if [ -d "$INSTALL_DIR/utils_dev" ]; then
-        log_step "Removing development utilities (utils_dev)..."
-        rm -rf "$INSTALL_DIR/utils_dev"
-        log_success "Development utilities removed"
-    fi
-    
     # Update backend if requested
     if [ "$UPDATE_BACKEND" = true ]; then
         log_header "Updating Backend"
@@ -1696,70 +1580,7 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
         
         # Only add missing variables, don't overwrite existing ones
         if [ -f "$BACKEND_DIR/.env" ]; then
-            # Database configuration
-            if ! grep -q "^POSTGRES_DB=" "$BACKEND_DIR/.env"; then
-                echo "POSTGRES_DB=${DB_NAME}" >> "$BACKEND_DIR/.env"
-                ADDED_VARS=true
-                log_success "Added missing POSTGRES_DB"
-            fi
-            
-            if ! grep -q "^POSTGRES_USER=" "$BACKEND_DIR/.env"; then
-                echo "POSTGRES_USER=${DB_USER}" >> "$BACKEND_DIR/.env"
-                ADDED_VARS=true
-                log_success "Added missing POSTGRES_USER"
-            fi
-            
-            if ! grep -q "^POSTGRES_PASSWORD=" "$BACKEND_DIR/.env"; then
-                echo "POSTGRES_PASSWORD=${DB_PASSWORD}" >> "$BACKEND_DIR/.env"
-                ADDED_VARS=true
-                log_success "Added missing POSTGRES_PASSWORD"
-            fi
-            
-            if ! grep -q "^DATABASE_URL=" "$BACKEND_DIR/.env"; then
-                echo "DATABASE_URL=\"postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}?schema=public\"" >> "$BACKEND_DIR/.env"
-                ADDED_VARS=true
-                log_success "Added missing DATABASE_URL"
-            fi
-            
-            # Server configuration
-            if ! grep -q "^NODE_ENV=" "$BACKEND_DIR/.env"; then
-                echo "NODE_ENV=production" >> "$BACKEND_DIR/.env"
-                ADDED_VARS=true
-                log_success "Added missing NODE_ENV"
-            fi
-            
-            # Extract port from existing .env if available
-            EXISTING_PORT=$(grep -oP "^PORT=\K[0-9]+" "$BACKEND_DIR/.env" 2>/dev/null || echo "3000")
-            EXISTING_BACKEND_PORT=$(grep -oP "^BACKEND_PORT=\K[0-9]+" "$BACKEND_DIR/.env" 2>/dev/null || echo "$EXISTING_PORT")
-            
-            if ! grep -q "^PORT=" "$BACKEND_DIR/.env"; then
-                echo "PORT=${EXISTING_PORT}" >> "$BACKEND_DIR/.env"
-                ADDED_VARS=true
-                log_success "Added missing PORT"
-            fi
-            
-            if ! grep -q "^BACKEND_PORT=" "$BACKEND_DIR/.env"; then
-                echo "BACKEND_PORT=${EXISTING_BACKEND_PORT}" >> "$BACKEND_DIR/.env"
-                ADDED_VARS=true
-                log_success "Added missing BACKEND_PORT"
-            fi
-            
-            # Extract SERVER_IP from existing .env or detect it
-            EXISTING_SERVER_IP=$(grep -oP "^SERVER_IP=\K[^']+" "$BACKEND_DIR/.env" 2>/dev/null || hostname -I | awk '{print $1}')
-            
-            if ! grep -q "^NEXT_PUBLIC_API_URL=" "$BACKEND_DIR/.env"; then
-                echo "NEXT_PUBLIC_API_URL=http://${EXISTING_SERVER_IP}:${EXISTING_BACKEND_PORT}" >> "$BACKEND_DIR/.env"
-                ADDED_VARS=true
-                log_success "Added missing NEXT_PUBLIC_API_URL"
-            fi
-            
             # Authentication secrets
-            if ! grep -q "^NEXTAUTH_URL=" "$BACKEND_DIR/.env"; then
-                echo "NEXTAUTH_URL=http://${EXISTING_SERVER_IP}:${EXISTING_BACKEND_PORT}" >> "$BACKEND_DIR/.env"
-                ADDED_VARS=true
-                log_success "Added missing NEXTAUTH_URL"
-            fi
-            
             if ! grep -q "^NEXTAUTH_SECRET=" "$BACKEND_DIR/.env"; then
                 NEXTAUTH_SECRET=$(openssl rand -base64 32)
                 echo "NEXTAUTH_SECRET=${NEXTAUTH_SECRET}" >> "$BACKEND_DIR/.env"
@@ -1774,103 +1595,23 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
                 log_success "Added missing JWT_SECRET"
             fi
             
-            # Frontend configuration
-            EXISTING_FRONTEND_PORT=$(grep -oP "^FRONTEND_PORT=\K[0-9]+" "$BACKEND_DIR/.env" 2>/dev/null || echo "80")
-            
-            if ! grep -q "^FRONTEND_URL=" "$BACKEND_DIR/.env"; then
-                echo "FRONTEND_URL=http://${EXISTING_SERVER_IP}:${EXISTING_FRONTEND_PORT}" >> "$BACKEND_DIR/.env"
-                ADDED_VARS=true
-                log_success "Added missing FRONTEND_URL"
-            fi
-            
-            if ! grep -q "^FRONTEND_PORT=" "$BACKEND_DIR/.env"; then
-                echo "FRONTEND_PORT=${EXISTING_FRONTEND_PORT}" >> "$BACKEND_DIR/.env"
-                ADDED_VARS=true
-                log_success "Added missing FRONTEND_PORT"
-            fi
-            
-            if ! grep -q "^SERVER_IP=" "$BACKEND_DIR/.env"; then
-                echo "SERVER_IP=${EXISTING_SERVER_IP}" >> "$BACKEND_DIR/.env"
-                ADDED_VARS=true
-                log_success "Added missing SERVER_IP"
-            fi
-            
             # Cloudinary configuration
             if ! grep -q "^NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=" "$BACKEND_DIR/.env"; then
-                echo "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=${DEFAULT_CLOUDINARY_CLOUD_NAME}" >> "$BACKEND_DIR/.env"
+                echo "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=clutchpay" >> "$BACKEND_DIR/.env"
                 ADDED_VARS=true
                 log_success "Added missing NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME"
             fi
             
             if ! grep -q "^NEXT_PUBLIC_CLOUDINARY_API_KEY=" "$BACKEND_DIR/.env"; then
-                echo "NEXT_PUBLIC_CLOUDINARY_API_KEY=${DEFAULT_CLOUDINARY_API_KEY}" >> "$BACKEND_DIR/.env"
+                echo "NEXT_PUBLIC_CLOUDINARY_API_KEY=316689144486275" >> "$BACKEND_DIR/.env"
                 ADDED_VARS=true
                 log_success "Added missing NEXT_PUBLIC_CLOUDINARY_API_KEY"
             fi
             
             if ! grep -q "^CLOUDINARY_API_SECRET=" "$BACKEND_DIR/.env"; then
-                echo "CLOUDINARY_API_SECRET=${DEFAULT_CLOUDINARY_API_SECRET}" >> "$BACKEND_DIR/.env"
+                echo "CLOUDINARY_API_SECRET=7OboPECLxjrFxAsY0C4uFk9ny3A" >> "$BACKEND_DIR/.env"
                 ADDED_VARS=true
                 log_success "Added missing CLOUDINARY_API_SECRET"
-            fi
-            
-            # Stripe configuration
-            if ! grep -q "^STRIPE_SECRET_KEY=" "$BACKEND_DIR/.env"; then
-                echo "STRIPE_SECRET_KEY=${DEFAULT_STRIPE_SECRET_KEY}" >> "$BACKEND_DIR/.env"
-                ADDED_VARS=true
-                log_success "Added missing STRIPE_SECRET_KEY"
-            fi
-            
-            if ! grep -q "^STRIPE_WEBHOOK_SECRET=" "$BACKEND_DIR/.env"; then
-                echo "STRIPE_WEBHOOK_SECRET=${DEFAULT_STRIPE_WEBHOOK_SECRET}" >> "$BACKEND_DIR/.env"
-                ADDED_VARS=true
-                log_success "Added missing STRIPE_WEBHOOK_SECRET"
-            fi
-            
-            if ! grep -q "^STRIPE_CURRENCY=" "$BACKEND_DIR/.env"; then
-                echo "STRIPE_CURRENCY=${DEFAULT_STRIPE_CURRENCY}" >> "$BACKEND_DIR/.env"
-                ADDED_VARS=true
-                log_success "Added missing STRIPE_CURRENCY"
-            fi
-            
-            # PayPal configuration
-            if ! grep -q "^PAYPAL_CLIENT_ID=" "$BACKEND_DIR/.env"; then
-                echo "PAYPAL_CLIENT_ID=${DEFAULT_PAYPAL_CLIENT_ID}" >> "$BACKEND_DIR/.env"
-                ADDED_VARS=true
-                log_success "Added missing PAYPAL_CLIENT_ID"
-            fi
-            
-            if ! grep -q "^PAYPAL_CLIENT_SECRET=" "$BACKEND_DIR/.env"; then
-                echo "PAYPAL_CLIENT_SECRET=${DEFAULT_PAYPAL_CLIENT_SECRET}" >> "$BACKEND_DIR/.env"
-                ADDED_VARS=true
-                log_success "Added missing PAYPAL_CLIENT_SECRET"
-            fi
-            
-            if ! grep -q "^PAYPAL_MODE=" "$BACKEND_DIR/.env"; then
-                echo "PAYPAL_MODE=${DEFAULT_PAYPAL_MODE}" >> "$BACKEND_DIR/.env"
-                ADDED_VARS=true
-                log_success "Added missing PAYPAL_MODE"
-            fi
-            
-            # Email configuration (Resend)
-            if ! grep -q "^RESEND_API_KEY=" "$BACKEND_DIR/.env"; then
-                echo "RESEND_API_KEY=${DEFAULT_RESEND_API_KEY}" >> "$BACKEND_DIR/.env"
-                ADDED_VARS=true
-                log_success "Added missing RESEND_API_KEY"
-            fi
-            
-            if ! grep -q "^RESEND_FROM_EMAIL=" "$BACKEND_DIR/.env"; then
-                echo "RESEND_FROM_EMAIL=${DEFAULT_RESEND_FROM_EMAIL}" >> "$BACKEND_DIR/.env"
-                ADDED_VARS=true
-                log_success "Added missing RESEND_FROM_EMAIL"
-            fi
-            
-            # Cron job security
-            if ! grep -q "^CRON_SECRET=" "$BACKEND_DIR/.env"; then
-                CRON_SECRET=$(openssl rand -base64 32)
-                echo "CRON_SECRET=${CRON_SECRET}" >> "$BACKEND_DIR/.env"
-                ADDED_VARS=true
-                log_success "Added missing CRON_SECRET"
             fi
             
             if [ "$ADDED_VARS" = false ]; then
@@ -1919,99 +1660,20 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
         log_step "Restarting backend service..."
         $SUDO_CMD systemctl start clutchpay-backend.service
         log_success "Backend service restarted"
-        
-        # Check and configure Stripe webhook if needed
-        log_step "Checking Stripe webhook configuration..."
-        
-        # Check if stripe-webhook service exists and is running
-        if $SUDO_CMD systemctl list-unit-files stripe-webhook.service &> /dev/null && \
-           $SUDO_CMD systemctl is-active --quiet stripe-webhook.service 2>/dev/null; then
-            log_success "Stripe webhook service is already running"
-        else
-            # Service doesn't exist or is not running - configure it
-            log_info "Configuring Stripe webhook..."
-            
-            # Get current backend port from .env
-            CURRENT_BACKEND_PORT=$(grep -o "^BACKEND_PORT=[0-9]*" "$BACKEND_DIR/.env" 2>/dev/null | cut -d'=' -f2 || echo "3000")
-            
-            # Use the unified config_stripe function in non-interactive mode
-            config_stripe "false" "$BACKEND_DIR" "$CURRENT_BACKEND_PORT" || log_info "Stripe webhook can be configured later with: ./installer.sh --config-stripe"
-        fi
     fi
     
     # Update frontend if requested
     if [ "$UPDATE_FRONTEND" = true ]; then
         log_header "Updating Frontend"
         
-        # Determine Apache document root
-        APACHE_DOC_ROOT="${DEFAULT_APACHE_DOC_ROOT}"
-        
-        if [ "$INTERACTIVE_MODE" = true ]; then
-            # Interactive mode: ask for frontend location
-            echo -e "${YELLOW}Enter the Apache document root for frontend (default: ${DEFAULT_APACHE_DOC_ROOT}):${NC}"
-            read -r USER_APACHE_DOC_ROOT
-            APACHE_DOC_ROOT="${USER_APACHE_DOC_ROOT:-${DEFAULT_APACHE_DOC_ROOT}}"
-        fi
-        
-        # Verify frontend directory exists
-        if [ ! -d "$APACHE_DOC_ROOT" ]; then
-            if [ "$INTERACTIVE_MODE" = true ]; then
-                log_error "Frontend directory not found at $APACHE_DOC_ROOT"
-                echo -e "${YELLOW}Would you like to create it? (Y/n):${NC}"
-                read -r CREATE_DIR
-                if [[ ! "$CREATE_DIR" =~ ^[Nn]$ ]]; then
-                    $SUDO_CMD mkdir -p "$APACHE_DOC_ROOT"
-                    log_success "Created frontend directory: $APACHE_DOC_ROOT"
-                else
-                    log_error "Cannot update frontend without a valid directory"
-                    exit 1
-                fi
-            else
-                log_error "Frontend directory not found at $APACHE_DOC_ROOT"
-                log_info "Run with -i flag for interactive mode to specify a different location"
-                exit 1
-            fi
-        fi
-        
-        # Preserve existing config.js values (BACKEND_IP and BACKEND_PORT)
-        PRESERVED_BACKEND_IP=""
-        PRESERVED_BACKEND_PORT=""
-        
-        if [ -f "$APACHE_DOC_ROOT/JS/config.js" ]; then
-            log_step "Preserving existing frontend configuration..."
-            PRESERVED_BACKEND_IP=$(grep -oP "const BACKEND_IP = '\K[^']+" "$APACHE_DOC_ROOT/JS/config.js" 2>/dev/null || echo "")
-            PRESERVED_BACKEND_PORT=$(grep -oP "const BACKEND_PORT = \K[0-9]+" "$APACHE_DOC_ROOT/JS/config.js" 2>/dev/null || echo "")
-            
-            if [ -n "$PRESERVED_BACKEND_IP" ]; then
-                log_success "Preserved BACKEND_IP: $PRESERVED_BACKEND_IP"
-            fi
-            if [ -n "$PRESERVED_BACKEND_PORT" ]; then
-                log_success "Preserved BACKEND_PORT: $PRESERVED_BACKEND_PORT"
-            fi
-        fi
+        # Get Apache document root from config or use default
+        APACHE_DOC_ROOT="/var/www/clutchpay"
         
         log_step "Updating frontend files..."
         if ! $SUDO_CMD cp -r "$FRONTEND_DIR"/* "$APACHE_DOC_ROOT/" 2>&1; then
             log_error "Failed to copy frontend files"
             exit 1
         fi
-        log_success "Frontend files copied"
-        
-        # Restore preserved config.js values
-        if [ -n "$PRESERVED_BACKEND_IP" ] || [ -n "$PRESERVED_BACKEND_PORT" ]; then
-            log_step "Restoring frontend configuration..."
-            
-            if [ -n "$PRESERVED_BACKEND_IP" ]; then
-                $SUDO_CMD sed -i "s|const BACKEND_IP = '.*';|const BACKEND_IP = '${PRESERVED_BACKEND_IP}';|" "$APACHE_DOC_ROOT/JS/config.js"
-            fi
-            
-            if [ -n "$PRESERVED_BACKEND_PORT" ]; then
-                $SUDO_CMD sed -i "s|const BACKEND_PORT = [0-9]*;|const BACKEND_PORT = ${PRESERVED_BACKEND_PORT};|" "$APACHE_DOC_ROOT/JS/config.js"
-            fi
-            
-            log_success "Frontend configuration restored"
-        fi
-        
         $SUDO_CMD chown -R www-data:www-data "$APACHE_DOC_ROOT"
         log_success "Frontend files updated"
         
@@ -2140,10 +1802,11 @@ config_frontend() {
     log_header "Configure Frontend - Backend Location"
     
     # Ask for frontend directory
+    DEFAULT_APACHE_DOC_ROOT="/var/www/clutchpay"
     echo -e "${YELLOW}Frontend directory (default: ${DEFAULT_APACHE_DOC_ROOT}):${NC}"
     read -r USER_FRONTEND_DIR
     
-    FRONTEND_DIR="${USER_FRONTEND_DIR:-${DEFAULT_APACHE_DOC_ROOT}}"
+    FRONTEND_DIR="${USER_FRONTEND_DIR:-$DEFAULT_APACHE_DOC_ROOT}"
     
     if [ ! -d "$FRONTEND_DIR" ]; then
         log_error "Frontend directory not found at $FRONTEND_DIR"
@@ -2211,558 +1874,6 @@ config_frontend() {
 }
 
 ################################################################################
-# Helper Function - Find Backend Directory
-################################################################################
-find_backend_dir() {
-    # Ask for installation directory
-    echo -e "${YELLOW}Backend installation directory (default: ${DEFAULT_INSTALL_DIR}):${NC}"
-    read -r USER_INSTALL_DIR
-    
-    INSTALL_DIR="${USER_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
-    
-    # Check if user provided the root dir or the backend dir
-    if [ -f "$INSTALL_DIR/package.json" ] && [ -f "$INSTALL_DIR/.env" ]; then
-        BACKEND_DIR="$INSTALL_DIR"
-    else
-        BACKEND_DIR="$INSTALL_DIR/$BACKEND_SUBDIR"
-    fi
-    
-    if [ ! -d "$BACKEND_DIR" ]; then
-        log_error "Backend directory not found at $BACKEND_DIR"
-        exit 1
-    fi
-    
-    if [ ! -f "$BACKEND_DIR/.env" ]; then
-        log_error "Backend .env file not found at $BACKEND_DIR/.env"
-        exit 1
-    fi
-    
-    log_success "Backend found at: $BACKEND_DIR"
-}
-
-################################################################################
-# Helper Function - Update or Add Environment Variable
-################################################################################
-update_env_var() {
-    local env_file="$1"
-    local var_name="$2"
-    local var_value="$3"
-    
-    # Check if variable exists in the file
-    if grep -q "^${var_name}=" "$env_file"; then
-        # Update existing variable
-        sed -i "s|^${var_name}=.*|${var_name}=${var_value}|" "$env_file"
-    else
-        # Add new variable at the end
-        echo "${var_name}=${var_value}" >> "$env_file"
-    fi
-}
-
-################################################################################
-# Setup Stripe Webhook with CLI Function
-################################################################################
-setup_stripe_webhook() {
-    local stripe_secret_key="$1"
-    local backend_port="$2"
-    local backend_dir="$3"
-    
-    # Redirect all logs to stderr so they don't contaminate the return value
-    log_step "Setting up Stripe webhook listener..." >&2
-    
-    # Create a temporary file to capture the webhook secret
-    local webhook_output="/tmp/stripe_webhook_output_$$"
-    local webhook_secret=""
-    
-    # Start stripe listen in background and capture output
-    log_step "Starting Stripe CLI webhook listener..." >&2
-    
-    # Run stripe listen and capture the webhook signing secret
-    # The --api-key flag allows us to authenticate without interactive login
-    stripe listen \
-        --api-key "$stripe_secret_key" \
-        --forward-to "http://localhost:${backend_port}/api/payments/stripe/webhook" \
-        --print-secret > "$webhook_output" 2>&1 &
-    
-    local stripe_pid=$!
-    
-    # Wait a moment for the webhook secret to be printed
-    sleep 5
-    
-    # Read the webhook secret from output
-    # Use grep without -P flag for compatibility with all Debian/Linux versions
-    if [ -f "$webhook_output" ]; then
-        webhook_secret=$(cat "$webhook_output" | grep -o 'whsec_[a-zA-Z0-9_]*' | head -1)
-    fi
-    
-    # Kill the temporary process (we'll start the real one as a service)
-    kill $stripe_pid 2>/dev/null || true
-    rm -f "$webhook_output"
-    
-    if [ -z "$webhook_secret" ]; then
-        log_error "Could not capture webhook secret. Trying alternative method..." >&2
-        
-        # Alternative: Use stripe listen with --print-secret only (with timeout to prevent blocking)
-        webhook_secret=$(timeout 10 stripe listen --api-key "$stripe_secret_key" --print-secret 2>/dev/null | grep -o 'whsec_[a-zA-Z0-9_]*' | head -1)
-        
-        if [ -z "$webhook_secret" ]; then
-            log_error "Failed to get webhook secret from Stripe CLI" >&2
-            return 1
-        fi
-    fi
-    
-    log_success "Captured webhook secret: ${webhook_secret:0:15}..." >&2
-    
-    # Update .env with the webhook secret
-    update_env_var "$backend_dir/.env" "STRIPE_WEBHOOK_SECRET" "$webhook_secret"
-    log_success "Updated STRIPE_WEBHOOK_SECRET in .env" >&2
-    
-    # Return ONLY the webhook secret (no other output)
-    echo "$webhook_secret"
-}
-
-################################################################################
-# Create Stripe Webhook Systemd Service
-################################################################################
-create_stripe_webhook_service() {
-    local stripe_secret_key="$1"
-    local backend_port="$2"
-    
-    log_step "Creating Stripe webhook listener systemd service..."
-    
-    # Create systemd service for stripe webhook listener
-    $SUDO_CMD tee /etc/systemd/system/stripe-webhook.service > /dev/null << EOF
-[Unit]
-Description=Stripe CLI Webhook Listener for ClutchPay
-After=network.target clutchpay-backend.service
-Wants=clutchpay-backend.service
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/stripe listen --api-key ${stripe_secret_key} --forward-to http://localhost:${backend_port}/api/payments/stripe/webhook
-Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-
-# Security settings
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    # Check if stripe is in /usr/bin instead
-    if [ -f "/usr/bin/stripe" ]; then
-        $SUDO_CMD sed -i 's|/usr/local/bin/stripe|/usr/bin/stripe|g' /etc/systemd/system/stripe-webhook.service
-    fi
-
-    # Reload systemd and enable service
-    $SUDO_CMD systemctl daemon-reload
-    $SUDO_CMD systemctl enable stripe-webhook.service
-    $SUDO_CMD systemctl start stripe-webhook.service
-    
-    # Check if service started successfully
-    sleep 2
-    if $SUDO_CMD systemctl is-active --quiet stripe-webhook.service; then
-        log_success "Stripe webhook listener service started successfully"
-        return 0
-    else
-        log_warning "Stripe webhook service may not have started. Check with: systemctl status stripe-webhook"
-        return 1
-    fi
-}
-
-################################################################################
-# Configure Stripe Function
-# This function handles both interactive and non-interactive modes:
-# - Interactive: Asks for secret key, webhook method (CLI or manual), currency
-# - Non-interactive: Uses existing secret key from .env, auto-configures with CLI
-################################################################################
-config_stripe() {
-    local interactive="${1:-true}"  # Default to interactive mode
-    local backend_dir="${2:-}"      # Optional: backend dir for non-interactive
-    local backend_port="${3:-}"     # Optional: backend port for non-interactive
-    
-    log_header "Configure Stripe Payment Credentials"
-    
-    # Find backend directory
-    if [ -z "$backend_dir" ]; then
-        find_backend_dir
-        backend_dir="$BACKEND_DIR"
-    fi
-    
-    # Get backend port from .env or use default
-    if [ -z "$backend_port" ]; then
-        backend_port=$(grep -o '^PORT=[0-9]*' "$backend_dir/.env" 2>/dev/null | cut -d'=' -f2 || echo "3000")
-    fi
-    
-    local stripe_secret_key=""
-    local stripe_webhook_secret=""
-    local stripe_currency="eur"
-    local webhook_option="1"  # Default to CLI
-    
-    if [ "$interactive" = "true" ]; then
-        ####################
-        # INTERACTIVE MODE
-        ####################
-        
-        # Ask for webhook method
-        echo -e "\n${YELLOW}How would you like to configure Stripe webhooks?${NC}"
-        echo -e "  ${CYAN}1)${NC} Automatic setup with Stripe CLI (recommended for development/demo)"
-        echo -e "  ${CYAN}2)${NC} Manual setup (enter webhook secret from Stripe Dashboard)"
-        echo -e "${YELLOW}Choose option [1/2]:${NC}"
-        read -r webhook_option
-        webhook_option="${webhook_option:-1}"
-        
-        # Get Stripe Secret Key
-        echo -e "\n${YELLOW}Enter your Stripe Secret Key (starts with sk_test_ or sk_live_):${NC}"
-        echo -e "${BLUE}Get it from: https://dashboard.stripe.com/apikeys${NC}"
-        read -r stripe_secret_key
-        
-        if [ -z "$stripe_secret_key" ]; then
-            log_error "Stripe Secret Key cannot be empty"
-            return 1
-        fi
-        
-    else
-        ####################
-        # NON-INTERACTIVE MODE
-        ####################
-        
-        # Read existing Stripe key from .env
-        stripe_secret_key=$(grep "^STRIPE_SECRET_KEY=" "$backend_dir/.env" 2>/dev/null | cut -d'=' -f2 | tr -d '"' | tr -d "'")
-        
-        if [ -z "$stripe_secret_key" ]; then
-            log_warning "No Stripe Secret Key found in .env. Skipping webhook configuration."
-            log_info "Configure Stripe later with: ./installer.sh --config-stripe"
-            return 1
-        fi
-        
-        log_info "Using existing Stripe Secret Key from .env"
-        webhook_option="1"  # Always use CLI in non-interactive mode
-    fi
-    
-    # Configure webhook based on selected option
-    if [ "$webhook_option" = "1" ]; then
-        # Automatic webhook setup with Stripe CLI
-        log_step "Automatic Stripe Webhook Setup with CLI..."
-        
-        # Install Stripe CLI if not present
-        if ! command -v stripe &> /dev/null; then
-            install_stripe_cli
-            
-            if ! command -v stripe &> /dev/null; then
-                log_error "Failed to install Stripe CLI"
-                if [ "$interactive" = "true" ]; then
-                    log_info "Please install Stripe CLI manually and try again"
-                    return 1
-                else
-                    log_info "Configure Stripe later with: ./installer.sh --config-stripe"
-                    return 1
-                fi
-            fi
-        fi
-        
-        # Setup webhook and get secret
-        stripe_webhook_secret=$(setup_stripe_webhook "$stripe_secret_key" "$backend_port" "$backend_dir")
-        
-        if [ -z "$stripe_webhook_secret" ]; then
-            log_error "Failed to setup webhook automatically."
-            if [ "$interactive" = "true" ]; then
-                log_info "Please try manual setup (option 2)"
-                return 1
-            else
-                log_info "Configure Stripe later with: ./installer.sh --config-stripe"
-                return 1
-            fi
-        fi
-        
-        # Create systemd service for persistent webhook listener
-        create_stripe_webhook_service "$stripe_secret_key" "$backend_port"
-        
-    else
-        # Manual webhook secret entry (only in interactive mode)
-        echo -e "\n${YELLOW}Enter your Stripe Webhook Secret (starts with whsec_):${NC}"
-        echo -e "${BLUE}Get it after creating webhook endpoint in Stripe Dashboard${NC}"
-        read -r stripe_webhook_secret
-        
-        if [ -z "$stripe_webhook_secret" ]; then
-            log_error "Stripe Webhook Secret cannot be empty"
-            return 1
-        fi
-    fi
-    
-    # Get Stripe Currency (only in interactive mode)
-    if [ "$interactive" = "true" ]; then
-        echo -e "\n${YELLOW}Enter currency code (default: eur):${NC}"
-        echo -e "${BLUE}Examples: usd, eur, gbp${NC}"
-        read -r stripe_currency
-        stripe_currency="${stripe_currency:-eur}"
-        
-        # Final confirmation
-        echo -e "\n${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo -e "${YELLOW}Please confirm the Stripe configuration:${NC}"
-        echo -e "  Secret Key:     ${CYAN}${stripe_secret_key:0:12}...${NC}"
-        echo -e "  Webhook Secret: ${CYAN}${stripe_webhook_secret:0:12}...${NC}"
-        echo -e "  Currency:       ${CYAN}${stripe_currency}${NC}"
-        if [ "$webhook_option" = "1" ]; then
-            echo -e "  Webhook Mode:   ${CYAN}Automatic (Stripe CLI)${NC}"
-        else
-            echo -e "  Webhook Mode:   ${CYAN}Manual${NC}"
-        fi
-        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo -e "${YELLOW}Is this correct? (Y/n):${NC}"
-        read -r CONFIRM
-        
-        if [[ "$CONFIRM" =~ ^[Nn]$ ]]; then
-            log_error "Configuration cancelled"
-            return 1
-        fi
-        
-        # Update secret key and currency in interactive mode
-        update_env_var "$backend_dir/.env" "STRIPE_SECRET_KEY" "$stripe_secret_key"
-        update_env_var "$backend_dir/.env" "STRIPE_CURRENCY" "$stripe_currency"
-    fi
-    
-    # Update webhook secret (both modes)
-    log_step "Updating Stripe webhook configuration..."
-    update_env_var "$backend_dir/.env" "STRIPE_WEBHOOK_SECRET" "$stripe_webhook_secret"
-    
-    log_success "Stripe configuration updated"
-    
-    # Restart backend service (only if it exists and is running)
-    if systemctl is-active --quiet clutchpay-backend.service 2>/dev/null; then
-        log_step "Restarting backend service..."
-        $SUDO_CMD systemctl restart clutchpay-backend.service 2>/dev/null || log_warning "Could not restart backend service"
-    fi
-    
-    log_success "Stripe Configuration Complete! 🎉"
-    
-    if [ "$interactive" = "true" ]; then
-        echo -e "${GREEN}Stripe payments are now configured.${NC}"
-        
-        if [ "$webhook_option" = "1" ]; then
-            echo -e "\n${GREEN}✓ Stripe CLI webhook listener is running as a service${NC}"
-            echo -e "${YELLOW}Commands to manage the webhook listener:${NC}"
-            echo -e "  ${CYAN}systemctl status stripe-webhook${NC}   - Check status"
-            echo -e "  ${CYAN}systemctl restart stripe-webhook${NC}  - Restart listener"
-            echo -e "  ${CYAN}journalctl -u stripe-webhook -f${NC}   - View logs"
-        else
-            echo -e "${YELLOW}Note: Make sure your webhook endpoint is configured in Stripe Dashboard:${NC}"
-            echo -e "  Endpoint URL: ${CYAN}http://YOUR_BACKEND_IP:${backend_port}/api/payments/stripe/webhook${NC}"
-        fi
-        echo ""
-    fi
-    
-    return 0
-}
-
-################################################################################
-# Configure PayPal Function
-################################################################################
-config_paypal() {
-    log_header "Configure PayPal Payout Credentials"
-    
-    find_backend_dir
-    
-    # Get PayPal Client ID
-    echo -e "\n${YELLOW}Enter your PayPal Client ID:${NC}"
-    echo -e "${BLUE}Get it from: https://developer.paypal.com/dashboard${NC}"
-    read -r PAYPAL_CLIENT_ID
-    
-    if [ -z "$PAYPAL_CLIENT_ID" ]; then
-        log_error "PayPal Client ID cannot be empty"
-        exit 1
-    fi
-    
-    # Get PayPal Client Secret
-    echo -e "\n${YELLOW}Enter your PayPal Client Secret:${NC}"
-    read -r PAYPAL_CLIENT_SECRET
-    
-    if [ -z "$PAYPAL_CLIENT_SECRET" ]; then
-        log_error "PayPal Client Secret cannot be empty"
-        exit 1
-    fi
-    
-    # Get PayPal Mode
-    echo -e "\n${YELLOW}Select PayPal mode:${NC}"
-    echo "  1) sandbox (testing)"
-    echo "  2) live (production)"
-    echo -n "  Enter your choice (default: 1): "
-    read -r MODE_CHOICE
-    
-    case "${MODE_CHOICE:-1}" in
-        1) PAYPAL_MODE="sandbox" ;;
-        2) PAYPAL_MODE="live" ;;
-        *) PAYPAL_MODE="sandbox" ;;
-    esac
-    
-    # Final confirmation
-    echo -e "\n${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${YELLOW}Please confirm the PayPal configuration:${NC}"
-    echo -e "  Client ID:     ${CYAN}${PAYPAL_CLIENT_ID:0:20}...${NC}"
-    echo -e "  Client Secret: ${CYAN}${PAYPAL_CLIENT_SECRET:0:12}...${NC}"
-    echo -e "  Mode:          ${CYAN}${PAYPAL_MODE}${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${YELLOW}Is this correct? (Y/n):${NC}"
-    read -r CONFIRM
-    
-    if [[ "$CONFIRM" =~ ^[Nn]$ ]]; then
-        log_error "Configuration cancelled"
-        exit 1
-    fi
-    
-    log_step "Updating PayPal configuration..."
-    
-    update_env_var "$BACKEND_DIR/.env" "PAYPAL_CLIENT_ID" "$PAYPAL_CLIENT_ID"
-    update_env_var "$BACKEND_DIR/.env" "PAYPAL_CLIENT_SECRET" "$PAYPAL_CLIENT_SECRET"
-    update_env_var "$BACKEND_DIR/.env" "PAYPAL_MODE" "$PAYPAL_MODE"
-    
-    log_success "PayPal configuration updated"
-    
-    # Restart backend service
-    log_step "Restarting backend service..."
-    $SUDO_CMD systemctl restart clutchpay-backend.service 2>/dev/null || log_warning "Could not restart backend service"
-    
-    log_header "PayPal Configuration Complete! 🎉"
-    echo -e "${GREEN}PayPal payouts are now configured.${NC}\n"
-}
-
-################################################################################
-# Configure Resend Function
-################################################################################
-config_resend() {
-    log_header "Configure Resend Email Service"
-    
-    find_backend_dir
-    
-    # Get Resend API Key
-    echo -e "\n${YELLOW}Enter your Resend API Key (starts with re_):${NC}"
-    echo -e "${BLUE}Get it from: https://resend.com/api-keys${NC}"
-    read -r RESEND_API_KEY
-    
-    if [ -z "$RESEND_API_KEY" ]; then
-        log_error "Resend API Key cannot be empty"
-        exit 1
-    fi
-    
-    # Get From Email
-    echo -e "\n${YELLOW}Enter the 'From' email address (default: ${DEFAULT_RESEND_FROM_EMAIL}):${NC}"
-    echo -e "${BLUE}Note: The domain must be verified in your Resend dashboard${NC}"
-    read -r RESEND_FROM_EMAIL
-    RESEND_FROM_EMAIL="${RESEND_FROM_EMAIL:-${DEFAULT_RESEND_FROM_EMAIL}}"
-    
-    # Final confirmation
-    echo -e "\n${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${YELLOW}Please confirm the Resend configuration:${NC}"
-    echo -e "  API Key:    ${CYAN}${RESEND_API_KEY:0:12}...${NC}"
-    echo -e "  From Email: ${CYAN}${RESEND_FROM_EMAIL}${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${YELLOW}Is this correct? (Y/n):${NC}"
-    read -r CONFIRM
-    
-    if [[ "$CONFIRM" =~ ^[Nn]$ ]]; then
-        log_error "Configuration cancelled"
-        exit 1
-    fi
-    
-    log_step "Updating Resend configuration..."
-    
-    update_env_var "$BACKEND_DIR/.env" "RESEND_API_KEY" "$RESEND_API_KEY"
-    update_env_var "$BACKEND_DIR/.env" "RESEND_FROM_EMAIL" "\"$RESEND_FROM_EMAIL\""
-    
-    log_success "Resend configuration updated"
-    
-    # Restart backend service
-    log_step "Restarting backend service..."
-    $SUDO_CMD systemctl restart clutchpay-backend.service 2>/dev/null || log_warning "Could not restart backend service"
-    
-    log_header "Resend Configuration Complete! 🎉"
-    echo -e "${GREEN}Email notifications are now configured.${NC}"
-    echo -e "${YELLOW}Note: Make sure your domain is verified in the Resend dashboard.${NC}\n"
-}
-
-################################################################################
-# Configure Cloudinary Function
-################################################################################
-config_cloudinary() {
-    log_header "Configure Cloudinary Image Storage"
-    
-    find_backend_dir
-    
-    # Get Cloud Name
-    echo -e "\n${YELLOW}Enter your Cloudinary Cloud Name:${NC}"
-    echo -e "${BLUE}Get it from: https://console.cloudinary.com/settings/c-*/upload${NC}"
-    read -r CLOUDINARY_CLOUD_NAME
-    
-    if [ -z "$CLOUDINARY_CLOUD_NAME" ]; then
-        log_error "Cloudinary Cloud Name cannot be empty"
-        exit 1
-    fi
-    
-    # Get API Key
-    echo -e "\n${YELLOW}Enter your Cloudinary API Key:${NC}"
-    read -r CLOUDINARY_API_KEY
-    
-    if [ -z "$CLOUDINARY_API_KEY" ]; then
-        log_error "Cloudinary API Key cannot be empty"
-        exit 1
-    fi
-    
-    # Get API Secret
-    echo -e "\n${YELLOW}Enter your Cloudinary API Secret:${NC}"
-    read -r CLOUDINARY_API_SECRET
-    
-    if [ -z "$CLOUDINARY_API_SECRET" ]; then
-        log_error "Cloudinary API Secret cannot be empty"
-        exit 1
-    fi
-    
-    # Final confirmation
-    echo -e "\n${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${YELLOW}Please confirm the Cloudinary configuration:${NC}"
-    echo -e "  Cloud Name: ${CYAN}${CLOUDINARY_CLOUD_NAME}${NC}"
-    echo -e "  API Key:    ${CYAN}${CLOUDINARY_API_KEY}${NC}"
-    echo -e "  API Secret: ${CYAN}${CLOUDINARY_API_SECRET:0:12}...${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${YELLOW}Is this correct? (Y/n):${NC}"
-    read -r CONFIRM
-    
-    if [[ "$CONFIRM" =~ ^[Nn]$ ]]; then
-        log_error "Configuration cancelled"
-        exit 1
-    fi
-    
-    log_step "Updating Cloudinary configuration..."
-    
-    update_env_var "$BACKEND_DIR/.env" "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME" "$CLOUDINARY_CLOUD_NAME"
-    update_env_var "$BACKEND_DIR/.env" "NEXT_PUBLIC_CLOUDINARY_API_KEY" "$CLOUDINARY_API_KEY"
-    update_env_var "$BACKEND_DIR/.env" "CLOUDINARY_API_SECRET" "$CLOUDINARY_API_SECRET"
-    
-    log_success "Cloudinary configuration updated"
-    
-    # Rebuild and restart backend service
-    log_step "Rebuilding backend with new configuration..."
-    cd "$BACKEND_DIR"
-    
-    # Load environment variables
-    set -a
-    source "$BACKEND_DIR/.env"
-    set +a
-    
-    export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-    pnpm build > /dev/null 2>&1 || log_warning "Could not rebuild backend (NEXT_PUBLIC_ vars need rebuild)"
-    
-    log_step "Restarting backend service..."
-    $SUDO_CMD systemctl restart clutchpay-backend.service 2>/dev/null || log_warning "Could not restart backend service"
-    
-    log_header "Cloudinary Configuration Complete! 🎉"
-    echo -e "${GREEN}Cloudinary image storage is now configured.${NC}\n"
-}
-
-################################################################################
 # Main Script Entry Point
 ################################################################################
 
@@ -2798,22 +1909,6 @@ while [[ $# -gt 0 ]]; do
             MODE="config-frontend"
             shift
             ;;
-        --config-stripe)
-            MODE="config-stripe"
-            shift
-            ;;
-        --config-paypal)
-            MODE="config-paypal"
-            shift
-            ;;
-        --config-resend)
-            MODE="config-resend"
-            shift
-            ;;
-        --config-cloudinary)
-            MODE="config-cloudinary"
-            shift
-            ;;
         --help|-h)
             echo -e "${CYAN}ClutchPay Installer${NC}"
             echo ""
@@ -2828,10 +1923,6 @@ while [[ $# -gt 0 ]]; do
             echo "  ./installer.sh -i --update [tag]       Update with interactive mode and specific tag"
             echo "  ./installer.sh --config-backend        Configure backend (new frontend location)"
             echo "  ./installer.sh --config-frontend       Configure frontend (new backend location)"
-            echo "  ./installer.sh --config-stripe         Configure Stripe payment credentials"
-            echo "  ./installer.sh --config-paypal         Configure PayPal payout credentials"
-            echo "  ./installer.sh --config-resend         Configure Resend email service"
-            echo "  ./installer.sh --config-cloudinary     Configure Cloudinary image storage"
             echo "  ./installer.sh --help                  Show this help message"
             echo ""
             echo "Interactive mode (-i) options:"
@@ -2839,10 +1930,6 @@ while [[ $# -gt 0 ]]; do
             echo "  - Prompts for port numbers"
             echo "  - Confirms auto-detected IP address"
             echo "  - Prompts for all configuration options"
-            echo ""
-            echo "Service Configuration:"
-            echo "  Use --config-stripe, --config-paypal, --config-resend, or --config-cloudinary"
-            echo "  to configure external service credentials after installation."
             echo ""
             exit 0
             ;;
@@ -2871,18 +1958,6 @@ case "${MODE:-full}" in
         ;;
     config-frontend)
         config_frontend
-        ;;
-    config-stripe)
-        config_stripe
-        ;;
-    config-paypal)
-        config_paypal
-        ;;
-    config-resend)
-        config_resend
-        ;;
-    config-cloudinary)
-        config_cloudinary
         ;;
     *)
         install_clutchpay

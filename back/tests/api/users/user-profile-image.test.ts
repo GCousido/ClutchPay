@@ -35,7 +35,6 @@ describe('User Profile Image Management', () => {
     phone: '+34612345678',
     country: 'ES',
     imageUrl: null,
-    emailNotifications: true,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -176,7 +175,8 @@ describe('User Profile Image Management', () => {
 
       expect(response.status).toBe(200);
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[WARN] [User] Failed to delete old profile image')
+        'Failed to delete old image:',
+        expect.any(Error)
       );
       
       consoleSpy.mockRestore();
@@ -283,6 +283,9 @@ describe('User Profile Image Management', () => {
       });
 
       expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.errors).toBeDefined();
+      expect(data.errors[0].message).toContain('Invalid image format');
     });
 
     it('should return error if Cloudinary upload fails', async () => {

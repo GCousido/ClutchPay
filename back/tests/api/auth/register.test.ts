@@ -182,25 +182,8 @@ describe('POST /api/auth/register', () => {
       expect(res.status).toBe(400);
 
       const json = await getJsonResponse(res);
-      expect(json.message).toBe('Cannot create user - email already in use');
-    });
-
-    it('should allow registration with different email', async () => {
-      // Create first user
-      const req1 = createRequest('http://localhost/api/auth/register', {
-        method: 'POST',
-        body: validPayload,
-      });
-      await POST(req1);
-
-      // Create second user with different email
-      const req2 = createRequest('http://localhost/api/auth/register', {
-        method: 'POST',
-        body: { ...validPayload, email: 'different@example.com' },
-      });
-      const res = await POST(req2);
-
-      expect(res.status).toBe(201);
+      expect(json.message).toBe('Email already exists');
+      expect(json.errors).toBeDefined();
     });
   });
 

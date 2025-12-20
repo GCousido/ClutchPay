@@ -128,6 +128,9 @@ describe('GET /api/users/[id]', () => {
 
       const res = await GET(req, { params: Promise.resolve({ id: 'invalid' }) });
       expect(res.status).toBe(400);
+
+      const json = await getJsonResponse(res);
+      expect(json.message).toBe('Invalid user id');
     });
 
     it('should return 400 for invalid user ID (NaN)', async () => {
@@ -285,34 +288,6 @@ describe('PUT /api/users/[id]', () => {
       expect(res.status).toBe(200);
     });
 
-    it('should update emailNotifications to false', async () => {
-      const req = createAuthenticatedRequest(`http://localhost/api/users/${testUser.id}`, {
-        method: 'PUT',
-        userId: testUser.id,
-        body: { emailNotifications: false },
-      });
-
-      const res = await PUT(req, { params: Promise.resolve({ id: String(testUser.id) }) });
-      expect(res.status).toBe(200);
-
-      const updated = await db.user.findUnique({ where: { id: testUser.id } });
-      expect(updated?.emailNotifications).toBe(false);
-    });
-
-    it('should update emailNotifications to true', async () => {
-      const req = createAuthenticatedRequest(`http://localhost/api/users/${testUser.id}`, {
-        method: 'PUT',
-        userId: testUser.id,
-        body: { emailNotifications: true },
-      });
-
-      const res = await PUT(req, { params: Promise.resolve({ id: String(testUser.id) }) });
-      expect(res.status).toBe(200);
-
-      const updated = await db.user.findUnique({ where: { id: testUser.id } });
-      expect(updated?.emailNotifications).toBe(true);
-    });
-
     it('should set optional fields to null', async () => {
       const req = createAuthenticatedRequest(`http://localhost/api/users/${testUser.id}`, {
         method: 'PUT',
@@ -406,28 +381,6 @@ describe('PUT /api/users/[id]', () => {
         method: 'PUT',
         userId: testUser.id,
         body: { name: 'A'.repeat(101) },
-      });
-
-      const res = await PUT(req, { params: Promise.resolve({ id: String(testUser.id) }) });
-      expect(res.status).toBe(400);
-    });
-
-    it('should reject non-boolean emailNotifications', async () => {
-      const req = createAuthenticatedRequest(`http://localhost/api/users/${testUser.id}`, {
-        method: 'PUT',
-        userId: testUser.id,
-        body: { emailNotifications: 'yes' },
-      });
-
-      const res = await PUT(req, { params: Promise.resolve({ id: String(testUser.id) }) });
-      expect(res.status).toBe(400);
-    });
-
-    it('should reject numeric emailNotifications', async () => {
-      const req = createAuthenticatedRequest(`http://localhost/api/users/${testUser.id}`, {
-        method: 'PUT',
-        userId: testUser.id,
-        body: { emailNotifications: 1 },
       });
 
       const res = await PUT(req, { params: Promise.resolve({ id: String(testUser.id) }) });

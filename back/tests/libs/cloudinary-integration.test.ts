@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 const runIntegration =
   (!!process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME ||
     !!process.env.CLOUDINARY_URL) &&
-  process.env.RUN_INTEGRATION_TESTS === 'true';
+  process.env.RUN_CLOUDINARY_INTEGRATION === 'true';
 
 (runIntegration ? describe : describe.skip)('Cloudinary Integration (real)', () => {
   beforeAll(() => {

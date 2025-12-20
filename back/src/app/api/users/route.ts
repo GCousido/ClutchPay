@@ -1,7 +1,6 @@
 // app/api/users/route.ts
 import { getPagination, handleError, requireAuth } from '@/libs/api-helpers';
 import { db } from '@/libs/db';
-import { logger } from '@/libs/logger';
 import { NextResponse } from 'next/server';
 
 /**
@@ -14,9 +13,7 @@ import { NextResponse } from 'next/server';
 export async function GET(request: Request) {
   try {
     // Check authentication
-    const sessionUser = await requireAuth();
-
-    logger.debug('Users', 'GET /api/users - Listing users', { requestedBy: sessionUser.id });
+    await requireAuth();
 
     // Parse pagination parameters
     const url = new URL(request.url);
@@ -45,8 +42,6 @@ export async function GET(request: Request) {
 
     // Calculate total pages
     const totalPages = Math.max(1, Math.ceil(total / limit));
-
-    logger.debug('Users', 'Users list retrieved', { total, page, limit });
 
     // Return paginated response
     return NextResponse.json({

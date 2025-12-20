@@ -1,19 +1,14 @@
 #Requires -Version 5.1
-
-param(
-    [Alias('start')]
-    [switch]$StartServices,
-    [Alias('stop')]
-    [switch]$StopServices
-)
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 ################################################################################
 ###                                                                          ###
 ###     ClutchPay - Development Environment Setup Script                     ###
-###     Version: 2.0.0                                                       ###
+###     Version: 1.0.0                                                       ###
 ###     PowerShell Script for Automated Development Environment Setup        ###
 ###                                                                          ###
 ################################################################################
+
 <#
 .SYNOPSIS
     Automated setup script for ClutchPay development environment.
@@ -24,36 +19,24 @@ param(
     - Configures backend and frontend ports
     - Installs project dependencies via pnpm
     - Creates and configures .env files
-    - Optionally initializes Docker containers for database and frontend
+    - Initializes Docker containers for database and frontend
     - Sets up Prisma migrations and generates client
     - Optionally seeds the database with initial data
-    
-    Use -start to start all Docker services
-    Use -stop to stop all Docker services
+    - Starts the Next.js development server
 
 .NOTES
     File Name      : setup_dev_env.ps1
     Author         : ClutchPay Development Team
-    Version        : 2.0.0
+    Version        : 1.0.0
     Prerequisite   : PowerShell 5.1+, Node.js 20.9.0+, Docker, Docker Compose
     
 .EXAMPLE
     .\setup_dev_env.ps1
-    Runs the full setup without starting services
-    
-.EXAMPLE
-    .\setup_dev_env.ps1 -start
-    Starts all Docker services (database, frontend)
-    
-.EXAMPLE
-    .\setup_dev_env.ps1 -stop
-    Stops all Docker services
     
     If execution policies prevent script execution, run:
     Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
     .\setup_dev_env.ps1
 #>
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # Script configuration
 $ErrorActionPreference = "Stop"
@@ -119,166 +102,6 @@ function Generate-SecureKey {
     $rng.Dispose()
     return [Convert]::ToBase64String($bytes)
 }
-
-# Get project root
-$currentDir = Get-Location
-if ($currentDir.Path -like "*utils_dev*") {
-    $projectRoot = (Get-Item $currentDir).Parent.FullName
-} elseif ($currentDir.Path -like "*ClutchPay*") {
-    # Try to find project root by looking for back folder
-    $testPath = $currentDir.Path
-    while ($testPath -and -not (Test-Path (Join-Path $testPath "back"))) {
-        $parent = Split-Path $testPath -Parent
-        if ($parent -eq $testPath) { break }
-        $testPath = $parent
-    }
-    if (Test-Path (Join-Path $testPath "back")) {
-        $projectRoot = $testPath
-    } else {
-        $projectRoot = $currentDir.Path
-    }
-} else {
-    $projectRoot = $currentDir.Path
-}
-
-# ============================================================================
-# SERVICE CONTROL MODES (-start / -stop)
-# ============================================================================
-
-if ($StopServices) {
-    Write-Host ""
-    Write-Host "+====================================================================+" -ForegroundColor Red
-    Write-Host "|              STOPPING ALL CLUTCHPAY SERVICES                      |" -ForegroundColor White
-    Write-Host "+====================================================================+" -ForegroundColor Red
-    Write-Host ""
-    Write-Info "Project root: $projectRoot"
-    
-    # Verify directories exist
-    $backDockerPath = Join-Path $projectRoot "back\docker"
-    $frontDockerPath = Join-Path $projectRoot "frontend\docker"
-    
-    if (-not (Test-Path $backDockerPath)) {
-        Write-ErrorMsg "Backend docker directory not found: $backDockerPath"
-        exit 1
-    }
-    
-    # Stop backend database
-    Write-Step "Stopping backend database container..."
-    Push-Location $backDockerPath
-    try {
-        docker-compose down
-        if ($LASTEXITCODE -eq 0) {
-            Write-Success "Backend database container stopped"
-        } else {
-            Write-Warning "Backend database container may not have been running"
-        }
-    } catch {
-        Write-Warning "Could not stop backend database: $_"
-    }
-    Pop-Location
-    
-    # Stop frontend
-    if (Test-Path $frontDockerPath) {
-        Write-Step "Stopping frontend container..."
-        Push-Location $frontDockerPath
-        try {
-            docker-compose down
-            if ($LASTEXITCODE -eq 0) {
-                Write-Success "Frontend container stopped"
-            } else {
-                Write-Warning "Frontend container may not have been running"
-            }
-        } catch {
-            Write-Warning "Could not stop frontend: $_"
-        }
-        Pop-Location
-    }
-    
-    Write-Host ""
-    Write-Success "All services stopped"
-    exit 0
-}
-
-if ($StartServices) {
-    Write-Host ""
-    Write-Host "+====================================================================+" -ForegroundColor Green
-    Write-Host "|              STARTING ALL CLUTCHPAY SERVICES                      |" -ForegroundColor White
-    Write-Host "+====================================================================+" -ForegroundColor Green
-    Write-Host ""
-    Write-Info "Project root: $projectRoot"
-    
-    # Verify directories exist
-    $backDockerPath = Join-Path $projectRoot "back\docker"
-    $frontDockerPath = Join-Path $projectRoot "frontend\docker"
-    $backEnvPath = Join-Path $projectRoot "back\.env"
-    
-    if (-not (Test-Path $backDockerPath)) {
-        Write-ErrorMsg "Backend docker directory not found: $backDockerPath"
-        Write-Info "Make sure you are running from the project directory"
-        exit 1
-    }
-    
-    if (-not (Test-Path $backEnvPath)) {
-        Write-ErrorMsg "Backend .env file not found: $backEnvPath"
-        Write-Info "Run the setup script first without -start to create configuration"
-        exit 1
-    }
-    
-    # Start backend database
-    Write-Step "Starting backend database container..."
-    Push-Location $backDockerPath
-    try {
-        docker-compose --env-file $backEnvPath up -d
-        if ($LASTEXITCODE -eq 0) {
-            Write-Success "Backend database container started"
-            Write-Info "PostgreSQL is running on localhost:5432"
-        } else {
-            Write-ErrorMsg "Failed to start backend database container"
-            Write-Info "Check Docker is running and try again"
-        }
-    } catch {
-        Write-ErrorMsg "Error starting database container: $_"
-    }
-    Pop-Location
-    
-    # Start frontend
-    if (Test-Path $frontDockerPath) {
-        Write-Step "Starting frontend container..."
-        Push-Location $frontDockerPath
-        try {
-            docker-compose up -d --build
-            if ($LASTEXITCODE -eq 0) {
-                Write-Success "Frontend container started"
-                Write-Info "Frontend accessible at: http://localhost:80"
-            } else {
-                Write-ErrorMsg "Failed to start frontend container"
-            }
-        } catch {
-            Write-ErrorMsg "Error starting frontend container: $_"
-        }
-        Pop-Location
-    } else {
-        Write-Warning "Frontend docker directory not found, skipping"
-    }
-    
-    Write-Host ""
-    Write-Host "+--------------------------------------------------------------+" -ForegroundColor Cyan
-    Write-Host "| Service Status                                               |" -ForegroundColor Cyan
-    Write-Host "+--------------------------------------------------------------+" -ForegroundColor Cyan
-    Write-Host "| [+] PostgreSQL Database       Running on port 5432           |" -ForegroundColor White
-    Write-Host "| [+] Frontend Container        http://localhost:80            |" -ForegroundColor White
-    Write-Host "+--------------------------------------------------------------+" -ForegroundColor Cyan
-    Write-Host ""
-    Write-Info "To start the backend development server, run:"
-    Write-Host "    cd back; pnpm run dev" -ForegroundColor Yellow
-    Write-Host ""
-    exit 0
-}
-
-# ============================================================================
-# MAIN SETUP BLOCK - Only runs if no -start or -stop flag was provided
-# ============================================================================
-if (-not $StartServices -and -not $StopServices) {
 
 # Display script header
 Clear-Host
@@ -372,59 +195,49 @@ if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
 Write-Success "All system requirements validated successfully"
 
 # ============================================================================
-# PHASE 2: PORT CONFIGURATION (only if .env doesn't exist)
+# PHASE 2: PORT CONFIGURATION
 # ============================================================================
 
 Write-Header "PHASE 2: Port Configuration"
 
-# Check if .env already exists
-$backEnvExists = Test-Path -Path (Join-Path $projectRoot "back\.env")
+Write-Info "Configure the ports for your development environment"
+Write-Host ""
 
-if ($backEnvExists) {
-    Write-Success "Existing .env file found - using current configuration"
-    Write-Info "Delete back\.env to reconfigure ports"
+# Backend port configuration
+Write-Host "  Backend API Port Configuration:" -ForegroundColor White
+Write-Host "    Current default: $DEFAULT_BACKEND_PORT" -ForegroundColor Gray
+$backendPort = Read-Host "    Enter backend port (press Enter for default)"
+if ([string]::IsNullOrWhiteSpace($backendPort)) {
     $backendPort = $DEFAULT_BACKEND_PORT
-    $frontendPort = $DEFAULT_FRONTEND_PORT
+    Write-Info "Using default backend port: $backendPort"
 } else {
-    Write-Info "Configure the ports for your development environment"
-    Write-Host ""
-
-    # Backend port configuration
-    Write-Host "  Backend API Port Configuration:" -ForegroundColor White
-    Write-Host "    Current default: $DEFAULT_BACKEND_PORT" -ForegroundColor Gray
-    $backendPort = Read-Host "    Enter backend port (press Enter for default)"
-    if ([string]::IsNullOrWhiteSpace($backendPort)) {
-        $backendPort = $DEFAULT_BACKEND_PORT
-        Write-Info "Using default backend port: $backendPort"
-    } else {
-        Write-Success "Backend port set to: $backendPort"
-    }
-
-    Write-Host ""
-
-    # Frontend port configuration
-    Write-Host "  Frontend Port Configuration:" -ForegroundColor White
-    Write-Host "    Current default: $DEFAULT_FRONTEND_PORT" -ForegroundColor Gray
-    $frontendPort = Read-Host "    Enter frontend port (press Enter for default)"
-    if ([string]::IsNullOrWhiteSpace($frontendPort)) {
-        $frontendPort = $DEFAULT_FRONTEND_PORT
-        Write-Info "Using default frontend port: $frontendPort"
-    } else {
-        Write-Success "Frontend port set to: $frontendPort"
-    }
-
-    Write-Host ""
-    Write-Host "  +-------------------------------------------------------+" -ForegroundColor Cyan
-    Write-Host "  | Port Configuration Summary                          |" -ForegroundColor Cyan
-    Write-Host "  +-------------------------------------------------------+" -ForegroundColor Cyan
-    Write-Host "  | Backend API:  " -NoNewline -ForegroundColor White
-    Write-Host "http://localhost:$backendPort".PadRight(33) -NoNewline -ForegroundColor Green
-    Write-Host "|" -ForegroundColor Cyan
-    Write-Host "  | Frontend:     " -NoNewline -ForegroundColor White
-    Write-Host "http://localhost:$frontendPort".PadRight(33) -NoNewline -ForegroundColor Green
-    Write-Host "|" -ForegroundColor Cyan
-    Write-Host "  +-------------------------------------------------------+" -ForegroundColor Cyan
+    Write-Success "Backend port set to: $backendPort"
 }
+
+Write-Host ""
+
+# Frontend port configuration
+Write-Host "  Frontend Port Configuration:" -ForegroundColor White
+Write-Host "    Current default: $DEFAULT_FRONTEND_PORT" -ForegroundColor Gray
+$frontendPort = Read-Host "    Enter frontend port (press Enter for default)"
+if ([string]::IsNullOrWhiteSpace($frontendPort)) {
+    $frontendPort = $DEFAULT_FRONTEND_PORT
+    Write-Info "Using default frontend port: $frontendPort"
+} else {
+    Write-Success "Frontend port set to: $frontendPort"
+}
+
+Write-Host ""
+Write-Host "  +-------------------------------------------------------+" -ForegroundColor Cyan
+Write-Host "  | Port Configuration Summary                          |" -ForegroundColor Cyan
+Write-Host "  +-------------------------------------------------------+" -ForegroundColor Cyan
+Write-Host "  | Backend API:  " -NoNewline -ForegroundColor White
+Write-Host "http://localhost:$backendPort".PadRight(33) -NoNewline -ForegroundColor Green
+Write-Host "|" -ForegroundColor Cyan
+Write-Host "  | Frontend:     " -NoNewline -ForegroundColor White
+Write-Host "http://localhost:$frontendPort".PadRight(33) -NoNewline -ForegroundColor Green
+Write-Host "|" -ForegroundColor Cyan
+Write-Host "  +-------------------------------------------------------+" -ForegroundColor Cyan
 
 # ============================================================================
 # PHASE 3: DEPENDENCY INSTALLATION
@@ -435,9 +248,18 @@ Write-Header "PHASE 3: Installing Project Dependencies"
 Write-Step "Installing backend dependencies..."
 Write-Info "This may take a few minutes on first run"
 
-# Store original location and navigate to project root
+# Store original location
 $originalLocation = Get-Location
-Set-Location $projectRoot
+
+# Navigate to project root if we're in utils_dev
+$currentDir = Get-Location
+if ($currentDir.Path -like "*utils_dev*") {
+    Write-Info "Detected execution from utils_dev folder, navigating to project root..."
+    Set-Location ..
+    $projectRoot = Get-Location
+} else {
+    $projectRoot = $currentDir
+}
 
 Push-Location (Join-Path $projectRoot "back")
 try {
@@ -457,6 +279,7 @@ try {
     exit 1
 }
 Pop-Location
+Set-Location $projectRoot
 
 # ============================================================================
 # PHASE 4: ENVIRONMENT CONFIGURATION
@@ -464,11 +287,9 @@ Pop-Location
 
 Write-Header "PHASE 4: Environment Configuration"
 
-$backEnvPath = Join-Path $projectRoot "back\.env"
-
 Write-Step "Checking for .env file..."
 
-if (-not (Test-Path -Path $backEnvPath)) {
+if (-not (Test-Path -Path "back\.env")) {
     Write-Warning ".env file not found in backend directory"
     Write-Host ""
     $createEnv = Read-Host "  Would you like to create a new .env file with default values? (y/n)"
@@ -515,34 +336,6 @@ NEXT_PUBLIC_CLOUDINARY_API_KEY=<your_api_key>
 CLOUDINARY_API_SECRET=<your_api_secret>
 
 # ============================================================================
-# Stripe Configuration (Payment Processing)
-# Get your keys from https://dashboard.stripe.com/apikeys
-# ============================================================================
-STRIPE_SECRET_KEY=<your_stripe_secret_key>
-STRIPE_WEBHOOK_SECRET=<your_stripe_webhook_secret>
-STRIPE_CURRENCY=eur
-
-# ============================================================================
-# PayPal Configuration (Payouts)
-# Get your credentials from https://developer.paypal.com/
-# ============================================================================
-PAYPAL_CLIENT_ID=<your_paypal_client_id>
-PAYPAL_CLIENT_SECRET=<your_paypal_client_secret>
-PAYPAL_MODE=sandbox
-
-# ============================================================================
-# Email Configuration (Resend)
-# Get your API key from https://resend.com/
-# ============================================================================
-RESEND_API_KEY=<your_resend_api_key>
-RESEND_FROM_EMAIL=ClutchPay <noreply@your-domain.com>
-
-# ============================================================================
-# Logging Configuration
-# ============================================================================
-LOG_LEVEL=INFO
-
-# ============================================================================
 # Port Configuration
 # ============================================================================
 BACKEND_PORT=$backendPort
@@ -554,7 +347,7 @@ FRONTEND_URL=http://localhost:$frontendPort
 # ============================================================================
 NODE_ENV=development
 "@
-        Set-Content -Path $backEnvPath -Value $envContent
+        Set-Content -Path "back\.env" -Value $envContent
         Write-Success ".env file created successfully with secure keys"
         Write-Info "Database: clutchpay_db"
         Write-Info "User: clutchpay_user"
@@ -565,122 +358,188 @@ NODE_ENV=development
         Write-Info "You will need to create this file manually before running the application"
     }
 } else {
-    Write-Success ".env file found - preserving existing configuration"
-    Write-Info "If you need to reconfigure, delete back\.env and run setup again"
+    Write-Success ".env file found"
+    Write-Step "Updating port configuration in existing .env..."
+    
+    $envContent = Get-Content -Path "back\.env" -Raw
+    
+    # Update or add port-related variables
+    $updates = @{
+        "NEXT_PUBLIC_API_URL" = "http://localhost:$backendPort"
+        "NEXTAUTH_URL" = "http://localhost:$backendPort"
+        "BACKEND_PORT" = $backendPort
+        "FRONTEND_PORT" = $frontendPort
+        "FRONTEND_URL" = "http://localhost:$frontendPort"
+    }
+    
+    foreach ($key in $updates.Keys) {
+        if ($envContent -match "$key=.*") {
+            $envContent = $envContent -replace "$key=.*", "$key=$($updates[$key])"
+        } else {
+            $envContent += "`n$key=$($updates[$key])"
+        }
+    }
+    
+    Set-Content -Path "back\.env" -Value $envContent
+    Write-Success "Port configuration updated in .env file"
 }
 
-# Configure frontend environment variables (only if not exists)
-Write-Step "Checking frontend environment variables..."
-$frontendEnvPath = Join-Path $projectRoot "frontend\.env"
-
-if (Test-Path -Path $frontendEnvPath) {
-    Write-Success "Frontend .env file found - preserving existing configuration"
-} else {
-    Write-Info "Creating new frontend .env file"
-    $frontendEnvContent = @"
+# Configure frontend environment variables
+Write-Step "Configuring frontend environment variables..."
+$frontendEnvPath = "frontend\.env"
+$frontendEnvContent = @"
 # ============================================================================
 # Frontend Configuration
 # ============================================================================
 API_BASE_URL=http://localhost:$backendPort
 FRONTEND_PORT=$frontendPort
 "@
+
+if (Test-Path -Path $frontendEnvPath) {
+    Write-Info "Updating existing frontend .env file"
+    $existingContent = Get-Content -Path $frontendEnvPath -Raw
+    
+    # Update or add API URL variables
+    $apiUrlUpdates = @{
+        "API_BASE_URL" = "http://localhost:$backendPort"
+        "FRONTEND_PORT" = $frontendPort
+    }
+    
+    foreach ($key in $apiUrlUpdates.Keys) {
+        if ($existingContent -match "$key=.*") {
+            $existingContent = $existingContent -replace "$key=.*", "$key=$($apiUrlUpdates[$key])"
+        } else {
+            $existingContent += "`n$key=$($apiUrlUpdates[$key])"
+        }
+    }
+    
+    Set-Content -Path $frontendEnvPath -Value $existingContent
+    Write-Success "Frontend .env file updated"
+} else {
+    Write-Info "Creating new frontend .env file"
     Set-Content -Path $frontendEnvPath -Value $frontendEnvContent
     Write-Success "Frontend .env file created with API URL: http://localhost:$backendPort"
 }
 
 # ============================================================================
-# PHASE 5: DOCKER CONTAINER SETUP (Information Only)
+# PHASE 5: DOCKER CONTAINER SETUP
 # ============================================================================
 
-Write-Header "PHASE 5: Docker Container Information"
+Write-Header "PHASE 5: Docker Container Initialization"
 
 Write-Host ""
-Write-Host "  Docker containers are NOT started automatically." -ForegroundColor Yellow
-Write-Host "  The following containers are available:" -ForegroundColor White
+Write-Host "  The following Docker containers will be initialized:" -ForegroundColor White
 Write-Host "    - PostgreSQL Database (port 5432)" -ForegroundColor Gray
 Write-Host "    - Frontend Application (port $frontendPort)" -ForegroundColor Gray
 Write-Host ""
-Write-Info "To start all services, run:"
-Write-Host "    .\setup_dev_env.ps1 -start" -ForegroundColor Green
-Write-Host ""
-Write-Info "To stop all services, run:"
-Write-Host "    .\setup_dev_env.ps1 -stop" -ForegroundColor Red
-Write-Host ""
+
+$dockerConfirm = Read-Host "  Proceed with Docker container initialization? (y/n)"
+
+if ($dockerConfirm -ne "y") {
+    Write-Warning "Docker container initialization skipped by user"
+    Write-Info "You can start containers manually later with: docker-compose up -d"
+} else {
+    # Backend containers (database)
+    Write-Step "Starting backend database container..."
+    Write-Info "Initializing PostgreSQL database via Docker Compose"
+
+    Push-Location back\docker
+    try {
+        docker-compose --env-file ..\.env up -d
+        if ($LASTEXITCODE -eq 0) {
+            Write-Success "Backend database container started successfully"
+            Write-Info "PostgreSQL is running on localhost:5432"
+        } else {
+            Write-ErrorMsg "Failed to start backend database container"
+            Pop-Location
+            exit 1
+        }
+    } catch {
+        Write-ErrorMsg "Error starting database container: $_"
+        Pop-Location
+        exit 1
+    }
+    Pop-Location
+
+    # Frontend container
+    Write-Step "Starting frontend container..."
+    Write-Info "Building and deploying frontend Docker container"
+
+    Push-Location frontend\docker
+
+    # Create frontend .env file
+    @"
+FRONTEND_PORT=$frontendPort
+"@ | Set-Content -Path ".env"
+
+    try {
+        docker-compose up -d --build
+        if ($LASTEXITCODE -eq 0) {
+            Write-Success "Frontend container started successfully"
+            Write-Info "Frontend accessible at: http://localhost:$frontendPort"
+        } else {
+            Write-ErrorMsg "Failed to start frontend container"
+            Pop-Location
+            exit 1
+        }
+    } catch {
+        Write-ErrorMsg "Error starting frontend container: $_"
+        Pop-Location
+        exit 1
+    }
+
+    Pop-Location
+}
 
 # ============================================================================
-# PHASE 6: DATABASE MIGRATION AND SETUP (Optional)
+# PHASE 6: DATABASE MIGRATION AND SETUP
 # ============================================================================
 
 Write-Header "PHASE 6: Database Migration and Setup"
 
-Write-Host ""
-Write-Host "  Database migrations require the PostgreSQL container to be running." -ForegroundColor Yellow
-Write-Host ""
+Push-Location back
 
-$runMigrations = Read-Host "  Would you like to run database migrations now? (y/n)"
-
-if ($runMigrations -eq "y") {
-    Push-Location (Join-Path $projectRoot "back")
-
-    Write-Step "Resetting Prisma migrations..."
-    Write-Info "This will drop the database and recreate it with the latest schema"
-    try {
-        npx prisma migrate reset --force
-        if ($LASTEXITCODE -eq 0) {
-            Write-Success "Database migrations applied successfully"
-        } else {
-            Write-ErrorMsg "Failed to apply database migrations"
-            Pop-Location
-            Write-Warning "Make sure the database container is running: .\setup_dev_env.ps1 -start"
-        }
-    } catch {
-        Write-ErrorMsg "Error during migration: $_"
+Write-Step "Resetting Prisma migrations..."
+Write-Info "This will drop the database and recreate it with the latest schema"
+try {
+    npx prisma migrate reset --force
+    if ($LASTEXITCODE -eq 0) {
+        Write-Success "Database migrations applied successfully"
+    } else {
+        Write-ErrorMsg "Failed to apply database migrations"
         Pop-Location
-        Write-Warning "Make sure the database container is running: .\setup_dev_env.ps1 -start"
+        exit 1
     }
-
-    Write-Step "Generating Prisma Client..."
-    try {
-        npx prisma generate
-        if ($LASTEXITCODE -eq 0) {
-            Write-Success "Prisma Client generated successfully"
-        } else {
-            Write-ErrorMsg "Failed to generate Prisma Client"
-        }
-    } catch {
-        Write-ErrorMsg "Error generating Prisma Client: $_"
-    }
-
+} catch {
+    Write-ErrorMsg "Error during migration: $_"
     Pop-Location
-} else {
-    Write-Info "Skipping database migrations"
-    Write-Info "You can run migrations later with: cd back; npx prisma migrate reset --force"
-    
-    # Still generate Prisma Client as it's needed for TypeScript
-    Push-Location (Join-Path $projectRoot "back")
-    Write-Step "Generating Prisma Client..."
-    try {
-        npx prisma generate
-        if ($LASTEXITCODE -eq 0) {
-            Write-Success "Prisma Client generated successfully"
-        } else {
-            Write-Warning "Could not generate Prisma Client"
-        }
-    } catch {
-        Write-Warning "Error generating Prisma Client: $_"
-    }
-    Pop-Location
+    exit 1
 }
 
-# Database seeding (optional)
+Write-Step "Generating Prisma Client..."
+try {
+    npx prisma generate
+    if ($LASTEXITCODE -eq 0) {
+        Write-Success "Prisma Client generated successfully"
+    } else {
+        Write-ErrorMsg "Failed to generate Prisma Client"
+        Pop-Location
+        exit 1
+    }
+} catch {
+    Write-ErrorMsg "Error generating Prisma Client: $_"
+    Pop-Location
+    exit 1
+}
+
+# Database seeding
 Write-Host ""
 $seedChoice = Read-Host "  Would you like to seed the database with initial data? (y/n)"
 if ($seedChoice -eq "y") {
-    Push-Location (Join-Path $projectRoot "back")
     Write-Step "Seeding database with initial data..."
     
     # Check if seed file exists in utils_dev folder
-    $utilsSeedPath = Join-Path $projectRoot "utils_dev\seed.ts"
+    $utilsSeedPath = "..\utils_dev\seed.ts"
     $prismaSeedPath = "prisma\seed.ts"
     
     if (Test-Path -Path $utilsSeedPath) {
@@ -720,18 +579,40 @@ if ($seedChoice -eq "y") {
             Write-Info "Temporary seed.ts file removed"
         }
     }
-    Pop-Location
 } else {
     Write-Info "Skipping database seeding"
 }
 
+Pop-Location
+
 # ============================================================================
-# PHASE 7: SETUP COMPLETE
+# PHASE 7: DEVELOPMENT SERVER STARTUP
 # ============================================================================
 
-Write-Header "PHASE 7: Setup Complete"
+Write-Header "PHASE 7: Starting Development Server"
 
-Push-Location (Join-Path $projectRoot "back")
+Write-Step "Checking for processes on port $backendPort..."
+$processOnPort = Get-NetTCPConnection -LocalPort $backendPort -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
+
+if ($processOnPort) {
+    Write-Warning "Port $backendPort is currently in use"
+    Write-Step "Terminating conflicting processes..."
+    foreach ($processId in $processOnPort) {
+        try {
+            Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+            Write-Success "Terminated process with PID: $processId"
+        } catch {
+            Write-Warning "Could not terminate process $processId"
+        }
+    }
+    Start-Sleep -Seconds 2
+    Write-Success "Port $backendPort is now available"
+} else {
+    Write-Success "Port $backendPort is available"
+}
+
+Write-Step "Configuring Next.js development server..."
+Push-Location back
 
 $packageJsonPath = "package.json"
 if (Test-Path -Path $packageJsonPath) {
@@ -743,55 +624,32 @@ if (Test-Path -Path $packageJsonPath) {
     Write-Warning "package.json not found, using default configuration"
 }
 
-Pop-Location
-
 # Display final summary
 Write-Host ""
 Write-Host "+====================================================================+" -ForegroundColor Green
 Write-Host "|                                                                    |" -ForegroundColor Green
-Write-Host "|              SETUP COMPLETED SUCCESSFULLY!                         |" -ForegroundColor White
+Write-Host "|              SETUP COMPLETED SUCCESSFULLY!                     |" -ForegroundColor White
 Write-Host "|                                                                    |" -ForegroundColor Green
 Write-Host "+====================================================================+" -ForegroundColor Green
 Write-Host ""
 Write-Host "  +--------------------------------------------------------------+" -ForegroundColor Cyan
-Write-Host "  | Configuration Summary                                        |" -ForegroundColor Cyan
+Write-Host "  | Service Status                                           |" -ForegroundColor Cyan
 Write-Host "  +--------------------------------------------------------------+" -ForegroundColor Cyan
-Write-Host "  | Backend Port:  $backendPort                                             |" -ForegroundColor White
-Write-Host "  | Frontend Port: $frontendPort                                              |" -ForegroundColor White
-Write-Host "  | Database:      PostgreSQL on port 5432                       |" -ForegroundColor White
+Write-Host "  | [+] PostgreSQL Database       Running on port 5432       |" -ForegroundColor White
+Write-Host "  | [+] Frontend Container        " -NoNewline -ForegroundColor White
+Write-Host "http://localhost:$frontendPort".PadRight(26) -NoNewline -ForegroundColor Green
+Write-Host "|" -ForegroundColor Cyan
+Write-Host "  | [>] Backend API               " -NoNewline -ForegroundColor White
+Write-Host "http://localhost:$backendPort".PadRight(26) -NoNewline -ForegroundColor Yellow
+Write-Host "|" -ForegroundColor Cyan
 Write-Host "  +--------------------------------------------------------------+" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  +--------------------------------------------------------------+" -ForegroundColor Yellow
-Write-Host "  | NEXT STEPS                                                   |" -ForegroundColor Yellow
-Write-Host "  +--------------------------------------------------------------+" -ForegroundColor Yellow
-Write-Host "  |                                                              |" -ForegroundColor White
-Write-Host "  | 1. Configure your .env file with real credentials:          |" -ForegroundColor White
-Write-Host "  |    - Cloudinary (file storage)                              |" -ForegroundColor Gray
-Write-Host "  |    - Stripe (payment processing)                            |" -ForegroundColor Gray
-Write-Host "  |    - PayPal (payouts)                                       |" -ForegroundColor Gray
-Write-Host "  |    - Resend (email notifications)                           |" -ForegroundColor Gray
-Write-Host "  |                                                              |" -ForegroundColor White
-Write-Host "  | 2. Start Docker services:                                   |" -ForegroundColor White
-Write-Host "  |    .\setup_dev_env.ps1 -start                              |" -ForegroundColor Green
-Write-Host "  |                                                              |" -ForegroundColor White
-Write-Host "  | 3. Run database migrations (if not done already):           |" -ForegroundColor White
-Write-Host "  |    cd back; npx prisma migrate reset --force                |" -ForegroundColor Green
-Write-Host "  |                                                              |" -ForegroundColor White
-Write-Host "  | 4. Start the backend development server:                    |" -ForegroundColor White
-Write-Host "  |    cd back; pnpm run dev                                    |" -ForegroundColor Green
-Write-Host "  |                                                              |" -ForegroundColor White
-Write-Host "  | 5. To stop services later:                                  |" -ForegroundColor White
-Write-Host "  |    .\setup_dev_env.ps1 -stop                                |" -ForegroundColor Red
-Write-Host "  |                                                              |" -ForegroundColor White
-Write-Host "  +--------------------------------------------------------------+" -ForegroundColor Yellow
-Write-Host ""
-Write-Host "  [i] Environment configuration files created:" -ForegroundColor Blue
-Write-Host "      - back\.env (backend configuration)" -ForegroundColor Gray
-Write-Host "      - frontend\.env (frontend configuration)" -ForegroundColor Gray
-Write-Host ""
-Write-Host "  [!] Remember: Never commit .env files to version control!" -ForegroundColor Yellow
+Write-Host "  [i] Starting Next.js development server..." -ForegroundColor Blue
+Write-Host "  [i] Press Ctrl+C to stop the server" -ForegroundColor Blue
 Write-Host ""
 Write-Host "---------------------------------------------------------------------" -ForegroundColor DarkGray
 Write-Host ""
 
-} # End of main setup block
+pnpm run dev
+
+Pop-Location

@@ -107,9 +107,6 @@ export const userUpdateSchema = z.object({
     .string()
     .startsWith('data:image/', 'Invalid image format. Must be base64 encoded image')
     .optional(),
-  emailNotifications: z
-    .boolean()
-    .optional(),
 });
 
 // Schema for uploading profile image

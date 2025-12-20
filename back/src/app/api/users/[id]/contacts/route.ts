@@ -1,8 +1,7 @@
 // app/api/users/[id]/contacts/route.ts
-import { BadRequestError, getPagination, handleError, NotFoundError, requireAuth, requireSameUser } from '@/libs/api-helpers';
+import { getPagination, handleError, requireAuth, requireSameUser } from '@/libs/api-helpers';
 import { db } from '@/libs/db';
-import { logger } from '@/libs/logger';
-import { addContactSchema } from '@/libs/validations';
+import { addContactSchema, formatZodError } from '@/libs/validations';
 import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
 
@@ -25,15 +24,12 @@ export async function GET(request: Request) {
 
     const m = url.pathname.match(/\/api\/users\/(\d+)\/contacts\/?$/);
     if (!m) {
-      throw new BadRequestError('Cannot parse user id');
+      return NextResponse.json({ message: 'Invalid user id in path' }, { status: 400 });
     }
 
     const userId = Number(m[1]);
-
-    logger.debug('Contacts', 'GET /api/users/:id/contacts - Listing contacts', { userId, requestedBy: sessionUser.id });
-
     if (Number.isNaN(userId)) {
-      throw new BadRequestError('Cannot parse user id');
+      return NextResponse.json({ message: 'Invalid user id' }, { status: 400 });
     }
 
     requireSameUser(sessionUser.id, userId);
@@ -108,14 +104,11 @@ export async function DELETE(request: Request) {
     const url = new URL(request.url);
     const m = url.pathname.match(/\/api\/users\/(\d+)\/contacts\/?$/);
     if (!m) {
-      throw new BadRequestError('Cannot parse user id in path');
+      return NextResponse.json({ message: 'Invalid user id in path' }, { status: 400 });
     }
     const userId = Number(m[1]);
-
-    logger.debug('Contacts', 'DELETE /api/users/:id/contacts - Removing contact', { userId, requestedBy: sessionUser.id });
-
     if (Number.isNaN(userId)) {
-      throw new BadRequestError('Cannot parse user id');
+      return NextResponse.json({ message: 'Invalid user id' }, { status: 400 });
     }
 
     requireSameUser(sessionUser.id, userId);
@@ -124,11 +117,11 @@ export async function DELETE(request: Request) {
     const contactId = Number(body.contactId);
 
     if (!contactId || Number.isNaN(contactId)) {
-      throw new BadRequestError('Cannot parse contact ID');
+      return NextResponse.json({ message: 'contactId is required and must be a number' }, { status: 400 });
     }
 
     if (contactId === userId) {
-      throw new BadRequestError('Cannot remove yourself as a contact');
+      return NextResponse.json({ message: 'Cannot remove yourself as a contact' }, { status: 400 });
     }
 
     // Check if contact relationship exists
@@ -143,7 +136,7 @@ export async function DELETE(request: Request) {
     });
 
     if (!user || user.contacts.length === 0) {
-      throw new NotFoundError('Contact not found');
+      return NextResponse.json({ message: 'Contact not found' }, { status: 404 });
     }
 
     // Disconnect the contact
@@ -155,8 +148,6 @@ export async function DELETE(request: Request) {
         },
       },
     });
-
-    logger.info('Contacts', 'Contact removed successfully', { userId, contactId });
 
     return NextResponse.json({ message: 'Contact removed successfully' }, { status: 200 });
   } catch (error) {
@@ -182,14 +173,11 @@ export async function POST(request: Request) {
     const url = new URL(request.url);
     const m = url.pathname.match(/\/api\/users\/(\d+)\/contacts\/?$/);
     if (!m) {
-      throw new BadRequestError('Cannot parse user id');
+      return NextResponse.json({ message: 'Invalid user id in path' }, { status: 400 });
     }
     const userId = Number(m[1]);
-
-    logger.debug('Contacts', 'POST /api/users/:id/contacts - Adding contact', { userId, requestedBy: sessionUser.id });
-
     if (Number.isNaN(userId)) {
-      throw new BadRequestError('Cannot parse user id');
+      return NextResponse.json({ message: 'Invalid user id' }, { status: 400 });
     }
 
     requireSameUser(sessionUser.id, userId);
@@ -197,18 +185,18 @@ export async function POST(request: Request) {
     const body = await request.json();
     const parsed = addContactSchema.safeParse(body);
     if (!parsed.success) {
-      throw parsed.error;
+      return NextResponse.json({ message: 'Validation failed', errors: formatZodError(parsed.error),}, { status: 400 });
     }
     const { contactId } = parsed.data;
 
     if (contactId === userId) {
-      throw new BadRequestError('Cannot add yourself as a contact');
+      return NextResponse.json({ message: 'Cannot add yourself as a contact' }, { status: 400 });
     }
 
     // ensure target user exists
     const target = await db.user.findUnique({ where: { id: contactId }, select: { id: true, email: true, name: true } });
     if (!target) {
-      throw new NotFoundError('Contact user not found');
+      return NextResponse.json({ message: 'Contact user not found' }, { status: 404 });
     }
 
     // Check if contact already exists
@@ -221,7 +209,7 @@ export async function POST(request: Request) {
       },
     });
     if (existingRelation) {
-      throw new BadRequestError('Cannot add - contact already exists');
+      return NextResponse.json({ message: 'Contact already exists' }, { status: 400 });
     }
 
     // Try to connect the contact (many-to-many)
@@ -244,12 +232,11 @@ export async function POST(request: Request) {
 
       // return the connected contact info
       const added = updated.contacts?.[0] ?? null;
-      logger.info('Contacts', 'Contact added successfully', { userId, contactId, contactEmail: added?.email });
       return NextResponse.json({ message: 'Contact added', data: added }, { status: 201 });
     } catch (error: any) {
       // handle unique constraint / already connected
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new BadRequestError('Cannot add - contact already exists');
+        return NextResponse.json({ message: 'Contact already exists' }, { status: 400 });
       }
       throw error;
     }

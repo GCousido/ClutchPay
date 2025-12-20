@@ -88,26 +88,12 @@ jobs:
         working-directory: ./back
         run: pnpm run test:coverage
       
-      - name: Run integration tests
+      - name: Run Cloudinary integration tests
         if: matrix.os == 'ubuntu-latest' && matrix.node-version == '22.x'
         working-directory: ./back
         env:
-          RUN_INTEGRATION_TESTS: 'true'
-          # Stripe integration
-          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-          STRIPE_CURRENCY: 'eur'
-          # PayPal integration
-          PAYPAL_CLIENT_ID: ${{ secrets.PAYPAL_CLIENT_ID }}
-          PAYPAL_CLIENT_SECRET: ${{ secrets.PAYPAL_CLIENT_SECRET }}
-          PAYPAL_MODE: 'sandbox'
-          # Resend integration
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          RESEND_FROM_EMAIL: 'onboarding@resend.dev'
-          # Cloudinary (already in .env but needed for integration tests)
-          NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
-          NEXT_PUBLIC_CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
-          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
-        run: pnpm test tests/libs/*-integration.test.ts
+          RUN_CLOUDINARY_INTEGRATION: 'true'
+        run: pnpm test cloudinary-integration
       
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest' && matrix.node-version == '22.x'
@@ -127,26 +113,6 @@ jobs:
             back/coverage/
             back/test-results/
           retention-days: 30
-  
-  # Always-pass job to satisfy branch protection even when tests are skipped
-  test-status:
-    name: Test Status Check
-    runs-on: ubuntu-latest
-    needs: test
-    if: always()
-    steps:
-      - name: Check test results
-        run: |
-          if [ "${{ needs.test.result }}" == "skipped" ]; then
-            echo "Tests were skipped (no changes in /back/)"
-            exit 0
-          elif [ "${{ needs.test.result }}" == "success" ]; then
-            echo "Tests passed"
-            exit 0
-          else
-            echo "Tests failed"
-            exit 1
-          fi
   
   build:
     name: Build Check on ${{ matrix.os }}
@@ -182,6 +148,4 @@ jobs:
       
       - name: Build project
         working-directory: ./back
-        env: 
-          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
         run: pnpm run build

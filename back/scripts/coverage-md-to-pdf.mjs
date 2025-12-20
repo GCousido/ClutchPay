@@ -23,13 +23,7 @@ async function convertToPDF() {
 
     console.log('📄 Converting Markdown to PDF...');
 
-    let md = fs.readFileSync(mdPath, 'utf8');
-    
-    // Filter out the "Files Below X% Threshold" section for PDF
-    // This section starts with "## ⚠️ Files Below" and ends at the next "---" or "## "
-    const belowThresholdRegex = /## ⚠️ Files Below[^]*?(?=\n---\n\n## |\n---\n\n\*Generated)/;
-    md = md.replace(belowThresholdRegex, '');
-    
+    const md = fs.readFileSync(mdPath, 'utf8');
     const htmlContent = await marked.parse(md);
     
     const html = `<!doctype html>

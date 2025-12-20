@@ -263,19 +263,6 @@ main {
   background: #fafffe;
 }
 
-/* Error state for inputs */
-.input-error {
-  border-color: #ef4444 !important;
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1) !important;
-}
-
-.field-error {
-  color: #ef4444;
-  font-size: 0.85rem;
-  margin-top: 0.25rem;
-  display: block;
-}
-
 .login-box input::placeholder,
 .register-box input::placeholder {
   color: #9ca3af;
@@ -618,15 +605,6 @@ main {
     color: var(--color-text-primary);
     border-color: var(--color-primary);
     box-shadow: 0 0 0 3px rgba(134, 188, 36, 0.15);
-}
-
-[data-theme="dark"] .input-error {
-  border-color: #f87171 !important;
-  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.15) !important;
-}
-
-[data-theme="dark"] .field-error {
-  color: #f87171;
 }
 
 [data-theme="dark"] .form-group input::placeholder,

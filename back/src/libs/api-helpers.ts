@@ -1,59 +1,19 @@
 // libs/api-helpers.ts
 import { authOptions } from '@/libs/auth';
-import { logger } from '@/libs/logger';
 import { getServerSession } from 'next-auth';
 import { NextResponse } from 'next/server';
 import { ZodError, ZodType } from 'zod';
 
 /**
- * Custom error classes for API routes
- */
-export class BadRequestError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'BadRequestError';
-  }
-}
-
-export class UnauthorizedError extends Error {
-  constructor(message: string = 'Unauthorized') {
-    super(message);
-    this.name = 'UnauthorizedError';
-  }
-}
-
-export class ForbiddenError extends Error {
-  constructor(message: string = 'Forbidden') {
-    super(message);
-    this.name = 'ForbiddenError';
-  }
-}
-
-export class NotFoundError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'NotFoundError';
-  }
-}
-
-export class InternalServerError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'InternalServerError';
-  }
-}
-
-/**
  * Verifies that the user is authenticated
- * @throws {UnauthorizedError} if there is no active session
+ * @throws {Error} 'Unauthorized' error if there is no active session
  * @returns {Promise<SessionUser>} Current session user
  */
 export async function requireAuth() {
-  
   const session = await getServerSession(authOptions);
   
   if (!session?.user?.id) {
-    throw new UnauthorizedError();
+    throw new Error('Unauthorized');
   }
   
   return session.user;
@@ -63,86 +23,58 @@ export async function requireAuth() {
  * Verifies that the session user matches the target user
  * @param {number} sessionUserId - Session user ID
  * @param {number} targetUserId - Target user ID
- * @throws {ForbiddenError} if IDs don't match (except in development/test environment)
+ * @throws {Error} 'Forbidden' error if IDs don't match (except in development/test environment)
  */
 export function requireSameUser(sessionUserId: number, targetUserId: number) {
   const isDevelopment = process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development';
   
   if (sessionUserId !== targetUserId && !isDevelopment) {
-    throw new ForbiddenError();
+    throw new Error('Forbidden');
   }
 }
 
 /**
  * Handles API route errors and returns appropriate HTTP responses
- * @param {unknown} error - Error to handle (custom error classes, ZodError, or unknown)
+ * @param {unknown} error - Error to handle (ZodError, Error, or unknown)
  * @returns {NextResponse} JSON response with appropriate status code
- * - 400 for BadRequestError and validation errors (ZodError)
- * - 401 for UnauthorizedError
- * - 403 for ForbiddenError
- * - 404 for NotFoundError
- * - 500 for InternalServerError or unknown errors
+ * - 400 for validation errors (ZodError)
+ * - 401 for authentication errors
+ * - 403 for authorization errors
+ * - 500 for internal server errors
  */
 export function handleError(error: unknown) {
-  logger.error('API', 'Request error', error);
+  console.error(error);
   
   if (error instanceof ZodError) {
-    const formatted: Record<string, string> = {};
-    error.issues.forEach((issue) => {
-      const field = issue.path.join('.') || 'body';
-      formatted[field] = issue.message;
-    });
     return NextResponse.json(
-      { message: 'Validation failed', errors: formatted },
+      { errors: error.issues },
       { status: 400 }
     );
   }
   
-  if (error instanceof BadRequestError) {
-    return NextResponse.json(
-      { message: error.message },
-      { status: 400 }
-    );
-  }
-  
-  if (error instanceof UnauthorizedError) {
-    return NextResponse.json(
-      { message: error.message },
-      { status: 401 }
-    );
-  }
-  
-  if (error instanceof ForbiddenError) {
-    return NextResponse.json(
-      { message: error.message },
-      { status: 403 }
-    );
-  }
-  
-  if (error instanceof NotFoundError) {
-    return NextResponse.json(
-      { message: error.message },
-      { status: 404 }
-    );
-  }
-  
-  if (error instanceof InternalServerError) {
-    return NextResponse.json(
-      { message: error.message },
-      { status: 500 }
-    );
-  }
-  
-  // Unknown error
   if (error instanceof Error) {
+    if (error.message === 'Unauthorized') {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
+    if (error.message === 'Forbidden') {
+      return NextResponse.json(
+        { message: 'Forbidden' },
+        { status: 403 }
+      );
+    }
+    
     return NextResponse.json(
-      { message: error.message },
+      { error: error.message },
       { status: 500 }
     );
   }
   
   return NextResponse.json(
-    { message: 'Internal server error' },
+    { error: 'Internal server error' },
     { status: 500 }
   );
 }

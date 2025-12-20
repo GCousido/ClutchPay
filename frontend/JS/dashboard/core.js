@@ -183,15 +183,6 @@ class DashboardCore {
     }
 
     /**
-     * Shows warning notification toast
-     * 
-     * @param {string} message - Message to display
-     */
-    showWarningMessage(message) {
-        this.showFloatingMessage(message, 'warning');
-    }
-
-    /**
      * Shows floating toast notification
      * 
      * @param {string} message - Message to display

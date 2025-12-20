@@ -14,10 +14,6 @@ const nextConfig: NextConfig = {
   // Enable standalone output for production builds
   output: 'standalone',
   
-  // Exclude packages that need native file access from bundling
-  // PDFKit needs to read AFM font files from disk at runtime
-  serverExternalPackages: ['pdfkit'],
-  
   // API only configuration - CORS headers for external access
   async headers() {
     // Create rules that match origins with or without :80 (or configured frontend port)

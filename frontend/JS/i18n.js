@@ -209,51 +209,7 @@ const MESSAGES = {
             pdfFile: "Archivo PDF",
             invoiceCreated: "Factura creada correctamente",
             errorCreating: "Error al crear la factura",
-            errorLoading: "Error al cargar las facturas",
-            validationErrors: "Por favor, corrige los errores en el formulario",
-            payWithStripe: "Pagar con Stripe",
-            paymentSuccess: "Pago completado exitosamente",
-            paymentCanceled: "Pago cancelado",
-            paymentPending: "El pago está siendo procesado"
-        },
-        payments: {
-            title: "Mis Pagos",
-            loading: "Cargando pagos...",
-            noPayments: "No tienes pagos",
-            noPaymentsDesc: "Cuando realices pagos, aparecerán aquí",
-            paymentDate: "Fecha de pago",
-            reference: "Referencia",
-            receipt: "Recibo",
-            downloadReceipt: "Descargar Recibo",
-            paymentDetails: "Detalles del Pago",
-            subject: "Concepto",
-            payer: "Pagador",
-            receiver: "Receptor",
-            sortPaymentDate: "Fecha de pago",
-            errorLoading: "Error al cargar los pagos"
-        },
-        notifications: {
-            title: "Notificaciones",
-            noNotifications: "No tienes notificaciones",
-            markAllRead: "Marcar todas como leídas",
-            deleteAllRead: "Eliminar leídas",
-            allMarkedRead: "Todas las notificaciones marcadas como leídas",
-            allReadDeleted: "{{count}} notificaciones eliminadas",
-            deleted: "Notificación eliminada",
-            errorMarkingRead: "Error al marcar como leída",
-            errorMarkingAllRead: "Error al marcar todas como leídas",
-            errorDeleting: "Error al eliminar notificación",
-            errorDeletingAll: "Error al eliminar notificaciones",
-            justNow: "Ahora mismo",
-            minutesAgo: "Hace {{count}} min",
-            hoursAgo: "Hace {{count}}h",
-            daysAgo: "Hace {{count}}d",
-            types: {
-                paymentDue: "Pago próximo",
-                paymentOverdue: "Pago vencido",
-                paymentReceived: "Pago recibido",
-                invoiceCreated: "Factura creada"
-            }
+            errorLoading: "Error al cargar las facturas"
         },
         general: {
             welcome: "Bienvenido a ClutchPay",
@@ -264,7 +220,6 @@ const MESSAGES = {
             back: "Volver al inicio",
             languages: "Idiomas",
             cancel: "Cancelar",
-            close: "Cerrar",
             loading: "Cargando..."
         },
     },
@@ -441,51 +396,7 @@ const MESSAGES = {
             pdfFile: "PDF File",
             invoiceCreated: "Invoice created successfully",
             errorCreating: "Error creating invoice",
-            errorLoading: "Error loading invoices",
-            validationErrors: "Please correct the errors in the form",
-            payWithStripe: "Pay with Stripe",
-            paymentSuccess: "Payment completed successfully",
-            paymentCanceled: "Payment canceled",
-            paymentPending: "Payment is being processed"
-        },
-        payments: {
-            title: "My Payments",
-            loading: "Loading payments...",
-            noPayments: "You have no payments",
-            noPaymentsDesc: "When you make payments, they will appear here",
-            paymentDate: "Payment date",
-            reference: "Reference",
-            receipt: "Receipt",
-            downloadReceipt: "Download Receipt",
-            paymentDetails: "Payment Details",
-            subject: "Subject",
-            payer: "Payer",
-            receiver: "Receiver",
-            sortPaymentDate: "Payment date",
-            errorLoading: "Error loading payments"
-        },
-        notifications: {
-            title: "Notifications",
-            noNotifications: "You have no notifications",
-            markAllRead: "Mark all as read",
-            deleteAllRead: "Delete read",
-            allMarkedRead: "All notifications marked as read",
-            allReadDeleted: "{{count}} notifications deleted",
-            deleted: "Notification deleted",
-            errorMarkingRead: "Error marking as read",
-            errorMarkingAllRead: "Error marking all as read",
-            errorDeleting: "Error deleting notification",
-            errorDeletingAll: "Error deleting notifications",
-            justNow: "Just now",
-            minutesAgo: "{{count}} min ago",
-            hoursAgo: "{{count}}h ago",
-            daysAgo: "{{count}}d ago",
-            types: {
-                paymentDue: "Payment due",
-                paymentOverdue: "Payment overdue",
-                paymentReceived: "Payment received",
-                invoiceCreated: "Invoice created"
-            }
+            errorLoading: "Error loading invoices"
         },
         general: {
             welcome: "Welcome to ClutchPay",
@@ -496,7 +407,6 @@ const MESSAGES = {
             back: "Back to home",
             languages: "Languages",
             cancel: "Cancel",
-            close: "Close",
             loading: "Loading..."
         },
     }
@@ -539,35 +449,24 @@ function setLanguage(lang) {
  * 
  * @function t
  * @param {string} key - Path to translation (e.g., 'login.email', 'country.countries.ES')
- * @param {Object} [params] - Optional parameters for interpolation (e.g., { count: 5 })
  * @returns {string} Found translation or original key if not found
  * 
  * @description
  * Navigates through MESSAGES object using key with dots as separator.
- * Supports variable interpolation using {{variableName}} syntax.
  * If translation is not found, returns original key as fallback.
  * 
  * @example
  * i18n.t('login.email')              // "Correo electrónico" (ES) or "Email" (EN)
  * i18n.t('country.countries.ES')     // "España" (ES) or "Spain" (EN)
  * i18n.t('register.errors.required') // "Este campo es obligatorio" (ES)
- * i18n.t('notifications.minutesAgo', { count: 5 }) // "Hace 5 min" (ES)
  */
-function t(key, params = {}) {
+function t(key) {
     const keys = key.split('.');
     let result = MESSAGES[currentLang];
     for (const k of keys) {
         result = result?.[k];
         if (!result) return key;
     }
-    
-    // Handle interpolation
-    if (typeof result === 'string' && Object.keys(params).length > 0) {
-        return result.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
-            return params[varName] !== undefined ? params[varName] : match;
-        });
-    }
-    
     return result;
 }
 

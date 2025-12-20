@@ -1,6 +1,4 @@
 // libs/cloudinary.ts
-import { InternalServerError } from '@/libs/api-helpers';
-import { logger } from '@/libs/logger';
 import { v2 as cloudinary } from 'cloudinary';
 
 // Configure Cloudinary
@@ -34,8 +32,8 @@ export async function uploadImage(base64Image: string, folder = 'ClutchPay/profi
       publicId: result.public_id,
     };
   } catch (error) {
-    logger.error('Cloudinary', 'Image upload failed', error);
-    throw new InternalServerError('Failed to upload image to Cloudinary');
+    console.error('Cloudinary upload error:', error);
+    throw new Error('Failed to upload image to Cloudinary');
   }
 }
 
@@ -50,13 +48,13 @@ export async function deleteImage(publicId: string) {
     const result = await cloudinary.uploader.destroy(publicId);
     
     if (result.result !== 'ok' && result.result !== 'not found') {
-      throw new InternalServerError(`Cloudinary delete failed: ${result.result}`);
+      throw new Error(`Failed to delete image: ${result.result}`);
     }
-    
+
     return result;
   } catch (error) {
-    logger.error('Cloudinary', 'Image delete failed', error);
-    throw new InternalServerError('Failed to delete image from Cloudinary');
+    console.error('Cloudinary delete error:', error);
+    throw new Error('Failed to delete image from Cloudinary');
   }
 }
 
@@ -98,8 +96,8 @@ export async function uploadPdf(base64Pdf: string, folder = 'ClutchPay/invoices'
       publicId: result.public_id,
     };
   } catch (error) {
-    logger.error('Cloudinary', 'PDF upload failed', error);
-    throw new InternalServerError('Failed to upload PDF to Cloudinary');
+    console.error('Cloudinary PDF upload error:', error);
+    throw new Error('Failed to upload PDF to Cloudinary');
   }
 }
 
@@ -116,13 +114,13 @@ export async function deletePdf(publicId: string) {
     });
     
     if (result.result !== 'ok' && result.result !== 'not found') {
-      throw new InternalServerError(`Failed to delete PDF: ${result.result}`);
+      throw new Error(`Failed to delete PDF: ${result.result}`);
     }
 
     return result;
   } catch (error) {
-    logger.error('Cloudinary', 'PDF delete failed', error);
-    throw new InternalServerError('Failed to delete PDF from Cloudinary');
+    console.error('Cloudinary PDF delete error:', error);
+    throw new Error('Failed to delete PDF from Cloudinary');
   }
 }
 

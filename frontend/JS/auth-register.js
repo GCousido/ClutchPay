@@ -98,10 +98,6 @@ document.addEventListener('DOMContentLoaded', function () {
             country: countrySelect ? countrySelect.value : undefined,
         };
 
-        // Clear previous error messages
-        document.querySelectorAll('.field-error').forEach(el => el.remove());
-        document.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));
-
         try {
             const { ok, error } = await authInstance.register(formData);
             if (ok) {
@@ -110,37 +106,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     window.location.href = '../login.html';
                 }, 1500);
             } else {
-                // Check if error is an object with field-specific errors
-                if (typeof error === 'object' && error !== null && !error.message) {
-                    // Display field-specific errors
-                    let hasErrors = false;
-                    for (const [field, message] of Object.entries(error)) {
-                        const input = document.getElementById(field);
-                        if (input) {
-                            hasErrors = true;
-                            input.classList.add('input-error');
-                            
-                            // Create error message element
-                            const errorEl = document.createElement('div');
-                            errorEl.className = 'field-error';
-                            errorEl.textContent = message;
-                            errorEl.style.color = '#ef4444';
-                            errorEl.style.fontSize = '0.85rem';
-                            errorEl.style.marginTop = '0.25rem';
-                            
-                            // Insert after input
-                            input.parentNode.insertBefore(errorEl, input.nextSibling);
-                        }
-                    }
-                    if (hasErrors) {
-                        showErrorMessage(i18n.t('register.errors.validationFailed') || 'Por favor, corrige los errores en el formulario');
-                    } else {
-                        showErrorMessage(JSON.stringify(error));
-                    }
-                } else {
-                    // Display general error message
-                    showErrorMessage(error.message || error);
-                }
+                showErrorMessage(error);
                 submitBtn.disabled = false;
                 submitBtn.textContent = originalText;
             }

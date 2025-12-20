@@ -94,6 +94,10 @@ describe('POST /api/invoices - Create Invoice', () => {
 
     expect(response.status).toBe(400);
 
+    const data = await response.json();
+    expect(data.errors).toBeDefined();
+    expect(data.errors[0].message).toContain('Issuer and debtor cannot be the same user');
+
     expect(cloudinaryLib.uploadPdf).not.toHaveBeenCalled();
   });
 
@@ -109,6 +113,10 @@ describe('POST /api/invoices - Create Invoice', () => {
     });
 
     expect(response.status).toBe(400);
+
+    const data = await response.json();
+    expect(data.errors).toBeDefined();
+    expect(data.errors[0].message).toContain('Issuer and debtor cannot be the same user');
 
     expect(cloudinaryLib.uploadPdf).not.toHaveBeenCalled();
   });

@@ -17,6 +17,15 @@ const amountValidation = z.preprocess(
     .max(99_999_999.99, 'Amount must not exceed 99,999,999.99')
 );
 
+// Date validations
+const futureDateValidation = z
+  .string()
+  .datetime('Invalid date format')
+  .refine(
+    (date) => new Date(date) > new Date(),
+    { message: 'Date must be in the future' }
+  );
+
 const pastOrPresentDateValidation = z
   .string()
   .datetime('Invalid date format')
@@ -136,10 +145,10 @@ export const invoiceFilterSchema = z.object({
   debtorUserId: z.number().int().positive().optional(),
   minAmount: z.number().positive().optional(),
   maxAmount: z.number().positive().optional(),
-  issueDateFrom: z.iso.datetime().optional(),
-  issueDateTo: z.iso.datetime().optional(),
-  dueDateFrom: z.iso.datetime().optional(),
-  dueDateTo: z.iso.datetime().optional(),
+  issueDateFrom: z.string().datetime().optional(),
+  issueDateTo: z.string().datetime().optional(),
+  dueDateFrom: z.string().datetime().optional(),
+  dueDateTo: z.string().datetime().optional(),
 });
 
 // Query schema to validate and transform listing filters
@@ -197,10 +206,11 @@ export const invoiceListQuerySchema = z
       maxAmount: safeMax,
     };
   })
+  // TODO: check ZodIssueCode
   .superRefine((data, ctx) => {
     if (data.minAmount !== undefined && data.maxAmount !== undefined && data.minAmount > data.maxAmount) {
       ctx.addIssue({
-        code: "custom",
+        code: z.ZodIssueCode.custom,
         path: ['minAmount'],
         message: 'Minimum amount cannot be greater than maximum amount',
       });
@@ -214,7 +224,7 @@ export const invoiceListQuerySchema = z
 
     if (issueFrom && issueTo && issueFrom > issueTo) {
       ctx.addIssue({
-        code: "custom",
+        code: z.ZodIssueCode.custom,
         path: ['issueDateFrom'],
         message: 'Issue start date cannot be after issue end date',
       });
@@ -222,7 +232,7 @@ export const invoiceListQuerySchema = z
 
     if (dueFrom && dueTo && dueFrom > dueTo) {
       ctx.addIssue({
-        code: "custom",
+        code: z.ZodIssueCode.custom,
         path: ['dueDateFrom'],
         message: 'Due start date cannot be after due end date',
       });
