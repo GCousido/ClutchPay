@@ -1907,6 +1907,80 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
         log_step "Restarting backend service..."
         $SUDO_CMD systemctl start clutchpay-backend.service
         log_success "Backend service restarted"
+        
+        # Check and configure Stripe webhook if needed
+        log_step "Checking Stripe webhook configuration..."
+        
+        # Check if stripe-webhook service exists
+        if $SUDO_CMD systemctl list-unit-files stripe-webhook.service > /dev/null 2>&1; then
+            # Service exists, check if it's active
+            if ! $SUDO_CMD systemctl is-active --quiet stripe-webhook.service; then
+                log_warning "Stripe webhook service exists but is not running"
+                
+                # Get current backend port and Stripe key from .env
+                CURRENT_BACKEND_PORT=$(grep -oP "^BACKEND_PORT=\K[0-9]+" "$BACKEND_DIR/.env" 2>/dev/null || echo "3000")
+                CURRENT_STRIPE_KEY=$(grep -oP "^STRIPE_SECRET_KEY=\K.+" "$BACKEND_DIR/.env" 2>/dev/null || echo "")
+                
+                if [ -n "$CURRENT_STRIPE_KEY" ] && [ "$CURRENT_STRIPE_KEY" != "${DEFAULT_STRIPE_SECRET_KEY}" ]; then
+                    log_step "Attempting to restart Stripe webhook service..."
+                    $SUDO_CMD systemctl start stripe-webhook.service
+                    
+                    if $SUDO_CMD systemctl is-active --quiet stripe-webhook.service; then
+                        log_success "Stripe webhook service restarted"
+                    else
+                        log_warning "Could not restart webhook service. Check logs with: journalctl -u stripe-webhook -f"
+                    fi
+                else
+                    log_info "Stripe using default/demo credentials. Skipping webhook setup."
+                fi
+            else
+                log_success "Stripe webhook service is already running"
+            fi
+        else
+            # Service doesn't exist - check if we should create it
+            log_warning "Stripe webhook service not found"
+            
+            # Get current backend port and Stripe key from .env
+            CURRENT_BACKEND_PORT=$(grep -oP "^BACKEND_PORT=\K[0-9]+" "$BACKEND_DIR/.env" 2>/dev/null || echo "3000")
+            CURRENT_STRIPE_KEY=$(grep -oP "^STRIPE_SECRET_KEY=\K.+" "$BACKEND_DIR/.env" 2>/dev/null || echo "")
+            
+            # Check if we have real (non-demo) Stripe credentials configured
+            if [ -n "$CURRENT_STRIPE_KEY" ] && [ "$CURRENT_STRIPE_KEY" != "${DEFAULT_STRIPE_SECRET_KEY}" ]; then
+                # Real Stripe credentials exist - ensure CLI is installed
+                if ! command -v stripe &> /dev/null; then
+                    log_step "Real Stripe credentials detected. Installing Stripe CLI..."
+                    
+                    if install_stripe_cli; then
+                        log_success "Stripe CLI installed successfully"
+                    else
+                        log_error "Failed to install Stripe CLI"
+                        log_info "Install it manually and configure with: ./installer.sh --config-stripe"
+                        # Skip webhook setup if CLI installation failed
+                        continue_to_frontend=true
+                    fi
+                fi
+                
+                # Only setup webhook if CLI is available (either was already installed or just installed successfully)
+                if command -v stripe &> /dev/null; then
+                    log_step "Setting up Stripe webhook for the first time..."
+                    
+                    # Setup webhook and get secret
+                    WEBHOOK_SECRET=$(setup_stripe_webhook "$CURRENT_STRIPE_KEY" "$CURRENT_BACKEND_PORT" "$BACKEND_DIR")
+                    
+                    if [ $? -eq 0 ] && [ -n "$WEBHOOK_SECRET" ]; then
+                        # Create the systemd service
+                        create_stripe_webhook_service "$CURRENT_STRIPE_KEY" "$CURRENT_BACKEND_PORT"
+                        log_success "Stripe webhook configured and started"
+                    else
+                        log_warning "Could not setup Stripe webhook automatically"
+                        log_info "You can configure it later with: ./installer.sh --config-stripe"
+                    fi
+                fi
+            else
+                log_info "Stripe using default/demo credentials. Skipping webhook setup."
+                log_info "Configure real Stripe credentials with: ./installer.sh --config-stripe"
+            fi
+        fi
     fi
     
     # Update frontend if requested
