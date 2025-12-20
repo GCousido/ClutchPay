@@ -232,11 +232,54 @@ class DashboardInvoices {
             );
             if (issuerResponse.ok) {
                 const issuer = await issuerResponse.json();
-                issuerInfo = `${issuer.name || issuer.email}`;
+                issuerInfo = issuer.name && issuer.surnames 
+                    ? `${issuer.name} ${issuer.surnames}` 
+                    : (issuer.name || issuer.email);
             }
         } catch (error) {
             console.error('Error loading issuer info:', error);
             issuerInfo = 'No disponible';
+        }
+        
+        // Load debtor/receiver information
+        let debtorInfo = 'Loading...';
+        try {
+            const debtorResponse = await fetch(
+                `${this.core.authInstance.API_BASE_URL}/api/users/${invoice.debtorUserId}`,
+                { credentials: 'include' }
+            );
+            if (debtorResponse.ok) {
+                const debtor = await debtorResponse.json();
+                debtorInfo = debtor.name && debtor.surnames 
+                    ? `${debtor.name} ${debtor.surnames}` 
+                    : (debtor.name || debtor.email);
+            }
+        } catch (error) {
+            console.error('Error loading debtor info:', error);
+            debtorInfo = 'No disponible';
+        }
+        
+        // Load payment receipt if invoice is paid
+        let receiptPdfUrl = null;
+        if (invoice.status === 'PAID') {
+            try {
+                // Try both roles to ensure we get the payment regardless of user role
+                const [payerPayments, receiverPayments] = await Promise.all([
+                    fetch(`${this.core.authInstance.API_BASE_URL}/api/payments?role=payer&limit=1000`, { credentials: 'include' })
+                        .then(res => res.ok ? res.json() : { data: [] }),
+                    fetch(`${this.core.authInstance.API_BASE_URL}/api/payments?role=receiver&limit=1000`, { credentials: 'include' })
+                        .then(res => res.ok ? res.json() : { data: [] })
+                ]);
+                
+                const allPayments = [...payerPayments.data, ...receiverPayments.data];
+                const payment = allPayments.find(p => p.invoiceId === invoice.id);
+                
+                if (payment && payment.receiptPdfUrl && payment.receiptPdfUrl !== 'unavailable') {
+                    receiptPdfUrl = payment.receiptPdfUrl;
+                }
+            } catch (error) {
+                console.error('Error loading payment receipt:', error);
+            }
         }
         
         const modalHTML = `
@@ -258,6 +301,11 @@ class DashboardInvoices {
                         <div class="invoice-modal-section">
                             <h3 data-i18n="invoices.issuer">Emisor</h3>
                             <p>${issuerInfo}</p>
+                        </div>
+                        
+                        <div class="invoice-modal-section">
+                            <h3 data-i18n="invoices.recipient">Receptor</h3>
+                            <p>${debtorInfo}</p>
                         </div>
                         
                         <div class="invoice-modal-section">
@@ -301,7 +349,42 @@ class DashboardInvoices {
                             <h3 data-i18n="invoices.pdfDocument">Documento PDF</h3>
                             <div>
                                 <button id="download-pdf-btn" class="btn btn-primary" data-pdf-url="${invoice.invoicePdfUrl}" data-invoice-number="${invoice.invoiceNumber}">
-                                    📄 <span data-i18n="invoices.downloadPdf">Descargar PDF</span>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                        <polyline points="14 2 14 8 20 8"/>
+                                        <line x1="16" y1="13" x2="8" y2="13"/>
+                                        <line x1="16" y1="17" x2="8" y2="17"/>
+                                        <polyline points="10 9 9 9 8 9"/>
+                                    </svg>
+                                    <span data-i18n="invoices.downloadPdf">Descargar PDF</span>
+                                </button>
+                            </div>
+                        </div>
+                        ` : ''}
+                        
+                        ${receiptPdfUrl ? `
+                        <div class="invoice-modal-section">
+                            <h3 data-i18n="payments.receipt">Recibo de Pago</h3>
+                            <div>
+                                <a href="${receiptPdfUrl}" target="_blank" class="btn btn-primary">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                        <polyline points="14 2 14 8 20 8"/>
+                                        <line x1="16" y1="13" x2="8" y2="13"/>
+                                        <line x1="16" y1="17" x2="8" y2="17"/>
+                                        <polyline points="10 9 9 9 8 9"/>
+                                    </svg>
+                                    <span data-i18n="payments.downloadReceipt">Descargar Recibo</span>
+                                </a>
+                            </div>
+                        </div>
+                        ` : ''}
+                        
+                        ${invoice.type === 'received' && (invoice.status === 'PENDING' || invoice.status === 'OVERDUE') && !invoice.payment ? `
+                        <div class="invoice-modal-section">
+                            <div class="invoice-payment-actions">
+                                <button id="pay-with-stripe-btn" class="btn btn-stripe" data-invoice-id="${invoice.id}">
+                                    💳 <span data-i18n="invoices.payWithStripe">Pagar con Stripe</span>
                                 </button>
                             </div>
                         </div>
@@ -329,9 +412,6 @@ class DashboardInvoices {
         };
         
         closeBtn.addEventListener('click', closeModal);
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) closeModal();
-        });
         
         // Add PDF download handler
         const downloadBtn = document.getElementById('download-pdf-btn');
@@ -339,6 +419,14 @@ class DashboardInvoices {
             downloadBtn.addEventListener('click', () => {
                 const pdfUrl = downloadBtn.dataset.pdfUrl;
                 window.open(pdfUrl, '_blank');
+            });
+        }
+        
+        // Add Stripe payment handler
+        const stripeBtn = document.getElementById('pay-with-stripe-btn');
+        if (stripeBtn) {
+            stripeBtn.addEventListener('click', async () => {
+                await this.handleStripePayment(invoice, closeModal);
             });
         }
         
@@ -506,7 +594,7 @@ class DashboardInvoices {
 
                         <div class="form-group">
                             <label for="invoice-description" data-i18n="invoices.description">Descripción</label>
-                            <textarea id="invoice-description" name="description" rows="3" 
+                            <textarea id="invoice-description" name="description" rows="3" required minlength="10"
                                       placeholder="Detalle de los servicios prestados..."></textarea>
                         </div>
 
@@ -578,9 +666,6 @@ class DashboardInvoices {
 
         closeBtn.addEventListener('click', closeModal);
         cancelBtn.addEventListener('click', closeModal);
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) closeModal();
-        });
 
         form.addEventListener('submit', (e) => this.handleCreateInvoice(e, modal));
 
@@ -597,6 +682,10 @@ class DashboardInvoices {
         const form = e.target;
         const submitBtn = form.querySelector('button[type="submit"]');
         const originalText = submitBtn.innerHTML;
+        
+        // Clear previous error messages
+        form.querySelectorAll('.field-error').forEach(el => el.remove());
+        form.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));
         
         try {
             submitBtn.disabled = true;
@@ -625,7 +714,7 @@ class DashboardInvoices {
                 issuerUserId: parseInt(this.core.currentUser.id),
                 debtorUserId: parseInt(formData.get('debtorUserId')),
                 subject: formData.get('subject'),
-                description: formData.get('description') || '',
+                description: (formData.get('description') || '').trim() || 'Sin descripción proporcionada',
                 amount: parseFloat(formData.get('amount')),
                 issueDate: new Date(formData.get('issueDate')).toISOString(),
                 dueDate: formData.get('dueDate') ? new Date(formData.get('dueDate')).toISOString() : null,
@@ -637,8 +726,8 @@ class DashboardInvoices {
                 const base64 = await this.fileToBase64(pdfFile);
                 data.invoicePdf = base64;
             } else {
-                // No PDF provided, backend will validate
-                data.invoicePdf = '';
+                // PDF is required
+                throw new Error('El PDF de la factura es obligatorio');
             }
 
             const response = await fetch(
@@ -655,7 +744,43 @@ class DashboardInvoices {
 
             if (!response.ok) {
                 const error = await response.json();
-                throw new Error(error.message || 'Error al crear la factura');
+                
+                // Check if error has field-specific validation errors
+                if (error.errors && typeof error.errors === 'object') {
+                    // Display field-specific errors
+                    for (const [field, message] of Object.entries(error.errors)) {
+                        // Map backend field names to frontend input IDs
+                        let inputId = field;
+                        if (field === 'invoiceNumber') inputId = 'invoice-number';
+                        if (field === 'debtorUserId') inputId = 'debtor-user';
+                        if (field === 'issueDate') inputId = 'issue-date';
+                        if (field === 'dueDate') inputId = 'due-date';
+                        if (field === 'description') inputId = 'invoice-description';
+                        if (field === 'subject') inputId = 'invoice-subject';
+                        if (field === 'amount') inputId = 'invoice-amount';
+                        if (field === 'invoicePdf') inputId = 'invoice-pdf';
+                        
+                        const input = form.querySelector(`#${inputId}`);
+                        if (input) {
+                            input.classList.add('input-error');
+                            
+                            // Create error message element
+                            const errorEl = document.createElement('div');
+                            errorEl.className = 'field-error';
+                            errorEl.textContent = message;
+                            errorEl.style.color = '#ef4444';
+                            errorEl.style.fontSize = '0.85rem';
+                            errorEl.style.marginTop = '0.25rem';
+                            
+                            // Insert after input or its parent
+                            const container = input.closest('.form-group') || input.parentNode;
+                            container.appendChild(errorEl);
+                        }
+                    }
+                    throw new Error(error.message || i18n.t('invoices.validationErrors') || 'Por favor, corrige los errores en el formulario');
+                } else {
+                    throw new Error(error.message || 'Error al crear la factura');
+                }
             }
 
             this.core.showSuccessMessage(i18n.t('invoices.invoiceCreated'));
@@ -671,6 +796,50 @@ class DashboardInvoices {
         } finally {
             submitBtn.disabled = false;
             submitBtn.innerHTML = originalText;
+        }
+    }
+
+    /**
+     * Handles Stripe payment for an invoice
+     * Creates a Stripe checkout session and redirects to payment page
+     * 
+     * @param {Object} invoice - Invoice to pay
+     * @param {Function} closeModal - Function to close the modal
+     */
+    async handleStripePayment(invoice, closeModal) {
+        try {
+            // Show loading state
+            const stripeBtn = document.getElementById('pay-with-stripe-btn');
+            const originalText = stripeBtn.innerHTML;
+            stripeBtn.disabled = true;
+            stripeBtn.innerHTML = '<span data-i18n="general.loading">Procesando...</span>';
+
+            // Initialize PaymentManager if not exists
+            if (!window.paymentManager) {
+                window.paymentManager = new PaymentManager(this.core.authInstance);
+            }
+
+            // Create Stripe checkout session
+            const result = await window.paymentManager.createCheckoutSession(invoice.id);
+
+            if (!result.success) {
+                throw new Error(result.error || 'Error al crear la sesión de pago');
+            }
+            
+            // Redirect to Stripe Checkout
+            console.log('[Invoice] Redirecting to Stripe:', result.checkoutUrl);
+            window.location.href = result.checkoutUrl;
+
+        } catch (error) {
+            console.error('Error processing Stripe payment:', error);
+            this.core.showErrorMessage(error.message || 'Error al procesar el pago con Stripe');
+            
+            // Restore button state
+            const stripeBtn = document.getElementById('pay-with-stripe-btn');
+            if (stripeBtn) {
+                stripeBtn.disabled = false;
+                stripeBtn.innerHTML = '💳 <span data-i18n="invoices.payWithStripe">Pagar con Stripe</span>';
+            }
         }
     }
 

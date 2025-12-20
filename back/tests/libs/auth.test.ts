@@ -33,6 +33,7 @@ describe('NextAuth Configuration - auth.ts', () => {
       phone: '+1234567890',
       country: 'US',
       imageUrl: 'http://example.com/avatar.jpg',
+      emailNotifications: true,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
