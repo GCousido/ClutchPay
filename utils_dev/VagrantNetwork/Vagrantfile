@@ -21,6 +21,9 @@ Vagrant.configure("2") do |config|
       echo "$MY_IP" > /vagrant/.backend_ip
 
       cp /tmp/installer.sh /installer.sh && chmod +x /installer.sh
+      
+      # PATCH: Replace IP detection to use eth1 instead of hostname -I
+      sed -i '/SERVER_IP=\$(hostname -I | awk/a SERVER_IP=$(ip -4 addr show eth1 2>/dev/null | grep -oP "(?<=inet\\\\s)\\\\d+(\\\\.\\\\d+){3}" || echo $SERVER_IP)' /installer.sh
     SHELL
   end
 
@@ -43,6 +46,9 @@ Vagrant.configure("2") do |config|
       echo "$MY_IP" > /vagrant/.frontend_ip
 
       cp /tmp/installer.sh /installer.sh && chmod +x /installer.sh
+      
+      # PATCH: Replace IP detection to use eth1 instead of hostname -I
+      sed -i '/SERVER_IP=\$(hostname -I | awk/a SERVER_IP=$(ip -4 addr show eth1 2>/dev/null | grep -oP "(?<=inet\\\\s)\\\\d+(\\\\.\\\\d+){3}" || echo $SERVER_IP)' /installer.sh
     SHELL
   end
 end

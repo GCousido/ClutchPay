@@ -2196,8 +2196,15 @@ config_frontend() {
     
     # Update config.js with new backend IP and port
     if [ -f "$FRONTEND_DIR/JS/config.js" ]; then
-        sed -i "s|const BACKEND_IP = '.*';|const BACKEND_IP = '${NEW_BACKEND_IP}';|" "$FRONTEND_DIR/JS/config.js"
-        sed -i "s|const BACKEND_PORT = [0-9]*;|const BACKEND_PORT = ${NEW_BACKEND_PORT};|" "$FRONTEND_DIR/JS/config.js"
+        # Use temp file to avoid permission issues with sed -i
+        TMP_CONFIG=$(mktemp)
+        sed "s|const BACKEND_IP = '.*';|const BACKEND_IP = '${NEW_BACKEND_IP}';|" "$FRONTEND_DIR/JS/config.js" | \
+        sed "s|const BACKEND_PORT = [0-9]*;|const BACKEND_PORT = ${NEW_BACKEND_PORT};|" > "$TMP_CONFIG"
+        
+        # Write with tee to preserve ownership and avoid permission issues
+        sudo -u www-data tee "$FRONTEND_DIR/JS/config.js" < "$TMP_CONFIG" > /dev/null
+        rm -f "$TMP_CONFIG"
+        
         log_success "Updated JS/config.js with backend at ${NEW_BACKEND_IP}:${NEW_BACKEND_PORT}"
     else
         log_warning "JS/config.js not found. Skipping config update."
