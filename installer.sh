@@ -85,6 +85,10 @@ APACHE_CONFIGURED=false
 SERVICE_INSTALLED=false
 SUCCESS=false
 
+# Tracks whether Apache existed before this run (used to decide frontend pathing)
+APACHE_WAS_PRESENT=false
+FRONTEND_URL_PATH="/"
+
 # Cleanup routine on any failure
 cleanup() {
     if [ "$SUCCESS" = true ]; then
@@ -141,7 +145,8 @@ DEFAULT_INSTALL_DIR="/opt/clutchpay"
 BACKEND_SUBDIR="back"
 DEFAULT_BACKEND_PORT=3000
 DEFAULT_FRONTEND_PORT=80
-DEFAULT_APACHE_DOC_ROOT="/var/www/clutchpay"
+DEFAULT_APACHE_DOC_ROOT="/var/www/html"
+DEFAULT_FRONTEND_SUBDIR="clutchpay"
 
 # Repository Configuration
 REPO_URL="https://github.com/GCousido/ClutchPay.git"
@@ -184,6 +189,26 @@ check_port() {
     return 1  # Port is free
 }
 
+# Returns 0 if the port is in use AND the listener appears to be Apache.
+port_used_by_apache() {
+    local port=$1
+
+    # If port is not in use, it can't be Apache.
+    if ! check_port "$port"; then
+        return 1
+    fi
+
+    # Process names are most reliable with sudo; fall back gracefully.
+    if $SUDO_CMD ss -tulpn 2>/dev/null | grep -E "LISTEN\\s+.*:${port}\\s" | grep -qiE "apache2|apache"; then
+        return 0
+    fi
+    if ss -tulpn 2>/dev/null | grep -E "LISTEN\\s+.*:${port}\\s" | grep -qiE "apache2|apache"; then
+        return 0
+    fi
+
+    return 1
+}
+
 # Function to validate port number
 validate_port() {
     local port=$1
@@ -212,6 +237,45 @@ validate_directory() {
 }
 
 ################################################################################
+# Apache/Frontend helper functions
+################################################################################
+
+is_apache_installed() {
+    command -v apache2 &> /dev/null
+}
+
+detect_apache_base_doc_root() {
+    local docroot=""
+    local candidates=(
+        "/etc/apache2/sites-enabled/000-default.conf"
+        "/etc/apache2/sites-available/000-default.conf"
+    )
+
+    for candidate in "${candidates[@]}"; do
+        if [ -f "$candidate" ]; then
+            docroot=$(awk '$1=="DocumentRoot"{print $2; exit}' "$candidate" | tr -d '"')
+            if [ -n "$docroot" ]; then
+                echo "$docroot"
+                return 0
+            fi
+        fi
+    done
+
+    echo "${DEFAULT_APACHE_DOC_ROOT}"
+}
+
+default_frontend_dir_guess() {
+    if [ -d "/var/www/clutchpay" ]; then
+        echo "/var/www/clutchpay"
+        return 0
+    fi
+
+    local base
+    base=$(detect_apache_base_doc_root)
+    echo "${base}/${DEFAULT_FRONTEND_SUBDIR}"
+}
+
+################################################################################
 # Helper function - Clone Repository with Proper Permissions
 ################################################################################
 clone_repository_with_permissions() {
@@ -235,7 +299,7 @@ clone_repository_with_permissions() {
     
     # Remove development utilities directory (not needed for production)
     if [ -d "$target_dir/utils_dev" ]; then
-        log_step "Removing development utilities (utils_dev)..."
+        log_step "Removing development utilities..."
         $SUDO_CMD rm -rf "$target_dir/utils_dev"
         log_success "Development utilities removed"
     fi
@@ -412,18 +476,15 @@ EOF
 install_apache() {
     log_header "Installing Apache"
 
-    if ! command -v apache2 &> /dev/null; then
+    if ! is_apache_installed; then
+        APACHE_WAS_PRESENT=false
         log_step "Installing Apache..."
         $SUDO_CMD apt-get install -y apache2 > /dev/null 2>&1
         log_success "Apache installed"
     else
+        APACHE_WAS_PRESENT=true
         log_success "Apache already installed"
     fi
-
-    # Enable required modules
-    log_step "Enabling Apache modules..."
-    $SUDO_CMD a2enmod proxy proxy_http rewrite headers > /dev/null 2>&1
-    log_success "Apache modules enabled"
 
     # Start Apache
     log_step "Starting Apache service..."
@@ -640,40 +701,106 @@ setup_frontend_installation() {
     local frontend_port="$2"
     local backend_ip="$3"
     local backend_port="$4"
-    local apache_doc_root="${DEFAULT_APACHE_DOC_ROOT}"
+    local apache_base_doc_root=""
+    local frontend_subdir="${DEFAULT_FRONTEND_SUBDIR}"
+    local apache_doc_root=""
 
     log_header "Setting up Frontend"
 
-    # Ask for Apache document root in interactive mode
+    if is_apache_installed; then
+        if [ -f "/etc/apache2/sites-enabled/clutchpay.conf" ] || [ -f "/etc/apache2/sites-available/clutchpay.conf" ]; then
+            log_warning "Detected existing Apache site 'clutchpay.conf'."
+            log_warning "This installer will NOT modify Apache config; that vhost may override the active DocumentRoot and prevent serving the new frontend path."
+        fi
+    fi
+
+    # Determine where Apache is already serving files from.
+    # If Apache exists, we do not modify its configuration; we only deploy under its DocumentRoot.
+    apache_base_doc_root=$(detect_apache_base_doc_root)
+
+    # Rule:
+    # - If Apache was installed during this run (i.e., it wasn't present), deploy at DocumentRoot root: http://IP/
+    # - If Apache pre-existed, deploy under a subdirectory to avoid interfering with existing content.
+    if [ "${APACHE_WAS_PRESENT}" = false ]; then
+        frontend_subdir=""
+    fi
+
+    # Ask for Apache base document root + subdir in interactive mode
     if [ "$INTERACTIVE_MODE" = true ]; then
-        echo -e "${YELLOW}Enter Apache document root (default: ${DEFAULT_APACHE_DOC_ROOT}):${NC}"
-        read -r USER_APACHE_DOC_ROOT
-        apache_doc_root="${USER_APACHE_DOC_ROOT:-${DEFAULT_APACHE_DOC_ROOT}}"
+        echo -e "${YELLOW}Enter the existing Apache DocumentRoot (default: ${apache_base_doc_root}):${NC}"
+        read -r USER_APACHE_BASE
+        apache_base_doc_root="${USER_APACHE_BASE:-${apache_base_doc_root}}"
+
+        if ! validate_directory "$apache_base_doc_root"; then
+            log_error "Invalid directory path: $apache_base_doc_root"
+            cleanup
+            exit 1
+        fi
+
+        if [ "${APACHE_WAS_PRESENT}" = false ]; then
+            echo -e "${YELLOW}Frontend subdirectory under DocumentRoot (leave empty for root '/'; default: empty):${NC}"
+        else
+            echo -e "${YELLOW}Frontend subdirectory under DocumentRoot (default: ${DEFAULT_FRONTEND_SUBDIR}):${NC}"
+        fi
+        read -r USER_FRONTEND_SUBDIR
+        if [ "${APACHE_WAS_PRESENT}" = false ]; then
+            frontend_subdir="${USER_FRONTEND_SUBDIR:-}" 
+        else
+            frontend_subdir="${USER_FRONTEND_SUBDIR:-${DEFAULT_FRONTEND_SUBDIR}}"
+        fi
+        frontend_subdir="${frontend_subdir#/}"
+        frontend_subdir="${frontend_subdir%/}"
+        if [ "$INTERACTIVE_MODE" = false ] && [ "${APACHE_WAS_PRESENT}" = true ] && [ -z "$frontend_subdir" ]; then
+            log_error "Frontend subdirectory cannot be empty in non-interactive mode when Apache already exists"
+            cleanup
+            exit 1
+        fi
+    fi
+
+    if [ -n "$frontend_subdir" ]; then
+        apache_doc_root="${apache_base_doc_root}/${frontend_subdir}"
+        FRONTEND_URL_PATH="/${frontend_subdir}/"
+    else
+        apache_doc_root="${apache_base_doc_root}"
+        FRONTEND_URL_PATH="/"
     fi
     
-    log_step "Using Apache document root: $apache_doc_root"
+    log_step "Deploying frontend into: $apache_doc_root"
+    log_info "Apache configuration will NOT be changed."
 
-    # Check if Apache document root already exists
-    if [ -d "$apache_doc_root" ] && [ -n "$(ls -A "$apache_doc_root" 2>/dev/null)" ]; then
+    # If destination exists and is non-empty, require an explicit choice.
+    while [ -d "$apache_doc_root" ] && [ -n "$(ls -A "$apache_doc_root" 2>/dev/null)" ]; do
         log_warning "Directory $apache_doc_root already exists with files!"
-        
+
         if [ "$INTERACTIVE_MODE" = true ]; then
             echo -e "${YELLOW}What would you like to do?${NC}"
-            echo "  1) Overwrite existing files"
-            echo "  2) Backup existing files and install new ones"
+            echo "  1) Backup existing files and install new ones"
+            echo "  2) Install into a subdirectory instead"
             echo "  3) Cancel installation"
             echo -n "  Enter your choice (1-3): "
             read -r CHOICE
-            
+
             case "$CHOICE" in
                 1)
-                    log_step "Overwriting existing files..."
-                    ;;
-                2)
                     BACKUP_DIR="${apache_doc_root}.backup.$(date +%s)"
                     log_step "Backing up existing files to $BACKUP_DIR..."
                     $SUDO_CMD mv "$apache_doc_root" "$BACKUP_DIR"
                     log_success "Backup created at $BACKUP_DIR"
+                    break
+                    ;;
+                2)
+                    echo -e "${YELLOW}Enter subdirectory name under ${apache_base_doc_root} (default: ${DEFAULT_FRONTEND_SUBDIR}):${NC}"
+                    read -r ALT_SUBDIR
+                    frontend_subdir="${ALT_SUBDIR:-${DEFAULT_FRONTEND_SUBDIR}}"
+                    frontend_subdir="${frontend_subdir#/}"
+                    frontend_subdir="${frontend_subdir%/}"
+                    if [ -z "$frontend_subdir" ]; then
+                        log_error "Subdirectory cannot be empty"
+                        continue
+                    fi
+                    apache_doc_root="${apache_base_doc_root}/${frontend_subdir}"
+                    FRONTEND_URL_PATH="/${frontend_subdir}/"
+                    log_step "Switching destination to: $apache_doc_root"
                     ;;
                 3)
                     log_error "Installation cancelled by user"
@@ -682,30 +809,37 @@ setup_frontend_installation() {
                     ;;
                 *)
                     log_error "Invalid choice: $CHOICE"
-                    cleanup
-                    exit 1
                     ;;
             esac
         else
             log_error "Directory $apache_doc_root already has files!"
-            log_info "In non-interactive mode, the directory must be empty or not exist."
+            log_info "In non-interactive mode, the destination directory must be empty or not exist."
             log_info "Options:"
             log_info "  1. Run with -i flag for interactive mode to choose an action"
             log_info "  2. Manually backup/move the directory: sudo mv $apache_doc_root ${apache_doc_root}.backup"
             cleanup
             exit 1
         fi
-    fi
+    done
 
-    # Copy frontend files to Apache document root
+    # Copy frontend files to target directory under DocumentRoot
     log_step "Copying frontend files to ${apache_doc_root}..."
     $SUDO_CMD mkdir -p "$apache_doc_root"
     $SUDO_CMD cp -r "$frontend_dir"/* "$apache_doc_root/"
     $SUDO_CMD chown -R www-data:www-data "$apache_doc_root"
     log_success "Frontend files copied"
 
-    # Configure Apache Virtual Host using helper function
-    configure_apache_vhost "$apache_doc_root" "$frontend_port" "$backend_ip" "$backend_port"
+    # Update frontend config.js to point to backend (no Apache config changes)
+    log_step "Configuring frontend backend connection..."
+    if [ -f "$apache_doc_root/JS/config.js" ]; then
+        $SUDO_CMD sed -i "s|const BACKEND_IP = '.*';|const BACKEND_IP = '${backend_ip}';|" "$apache_doc_root/JS/config.js"
+        $SUDO_CMD sed -i "s|const BACKEND_PORT = [0-9]*;|const BACKEND_PORT = ${backend_port};|" "$apache_doc_root/JS/config.js"
+        log_success "Frontend configured to use backend at ${backend_ip}:${backend_port}"
+    else
+        log_warning "JS/config.js not found. Skipping frontend configuration."
+    fi
+
+    log_success "Frontend available at: http://${backend_ip}:${frontend_port}${FRONTEND_URL_PATH}"
 }
 
 
@@ -756,7 +890,7 @@ common_setup() {
     fi
 
     if ! command -v tee &> /dev/null; then
-        log_step "Installing coreutils (includes tee)..."
+        log_step "Installing coreutils..."
         $SUDO_CMD apt-get update -qq
         $SUDO_CMD apt-get install -y coreutils > /dev/null 2>&1
         log_success "coreutils installed"
@@ -1130,8 +1264,13 @@ EOF
             
             if validate_port "$FRONTEND_PORT"; then
                 if check_port "$FRONTEND_PORT"; then
-                    log_warning "Port $FRONTEND_PORT is already in use!"
-                    echo -e "${YELLOW}Please choose a different port.${NC}"
+                    if port_used_by_apache "$FRONTEND_PORT"; then
+                        log_info "Port $FRONTEND_PORT is already in use by Apache; proceeding (no Apache config changes)."
+                        break
+                    else
+                        log_warning "Port $FRONTEND_PORT is already in use!"
+                        echo -e "${YELLOW}Please choose a different port.${NC}"
+                    fi
                 else
                     break  # Valid and available port
                 fi
@@ -1141,9 +1280,9 @@ EOF
         done
     else
         FRONTEND_PORT="$DEFAULT_FRONTEND_PORT"
-        if check_port "$DEFAULT_FRONTEND_PORT"; then
+        if check_port "$DEFAULT_FRONTEND_PORT" && ! port_used_by_apache "$DEFAULT_FRONTEND_PORT"; then
             log_warning "Port $DEFAULT_FRONTEND_PORT is in use!"
-            log_error "In non-interactive mode, the default port must be available."
+            log_error "In non-interactive mode, port $DEFAULT_FRONTEND_PORT must be free OR owned by Apache."
             log_info "Options:"
             log_info "  1. Run with -i flag for interactive mode to choose a different port"
             log_info "  2. Stop the service using port $DEFAULT_FRONTEND_PORT"
@@ -1236,7 +1375,7 @@ EOF
     echo -e "${GREEN}${BOLD}  ClutchPay Frontend has been successfully installed!${NC}"
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 
-    echo -e "${CYAN}🌐 Frontend URL:${NC} ${GREEN}http://${SERVER_IP}:${FRONTEND_PORT}${NC}\n"
+    echo -e "${CYAN}🌐 Frontend URL:${NC} ${GREEN}http://${SERVER_IP}:${FRONTEND_PORT}${FRONTEND_URL_PATH}${NC}\n"
     echo -e "${CYAN}🔗 Backend:${NC} ${BACKEND_IP}:${BACKEND_PORT}\n"
     echo -e "${CYAN}🔧 Service:${NC} systemctl status apache2\n"
 }
@@ -1344,7 +1483,12 @@ EOF
             
             if validate_port "$FRONTEND_PORT"; then
                 if check_port "$FRONTEND_PORT"; then
-                    log_warning "Port $FRONTEND_PORT is currently in use!"
+                    if port_used_by_apache "$FRONTEND_PORT"; then
+                        log_info "Port $FRONTEND_PORT is in use by Apache; proceeding (no Apache config changes)."
+                        break
+                    else
+                        log_warning "Port $FRONTEND_PORT is currently in use!"
+                    fi
                 else
                     break
                 fi
@@ -1390,8 +1534,9 @@ EOF
         fi
         
         # Validate frontend port is available
-        if check_port "$DEFAULT_FRONTEND_PORT"; then
+        if check_port "$DEFAULT_FRONTEND_PORT" && ! port_used_by_apache "$DEFAULT_FRONTEND_PORT"; then
             log_error "Frontend port $DEFAULT_FRONTEND_PORT is already in use!"
+            log_info "In non-interactive mode, port $DEFAULT_FRONTEND_PORT must be free OR owned by Apache."
             log_info "Options:"
             log_info "  1. Run with -i flag for interactive mode to choose a different port"
             log_info "  2. Stop the service using port $DEFAULT_FRONTEND_PORT"
@@ -1479,7 +1624,7 @@ EOF
     echo -e "   ${INSTALL_DIR}\n"
 
     echo -e "${CYAN}🌐 Access URLs:${NC}"
-    echo -e "   Frontend: ${GREEN}http://${SERVER_IP}:${FRONTEND_PORT}${NC}"
+    echo -e "   Frontend: ${GREEN}http://${SERVER_IP}:${FRONTEND_PORT}${FRONTEND_URL_PATH}${NC}"
     echo -e "   Backend:  ${GREEN}http://${SERVER_IP}:${BACKEND_PORT}${NC}\n"
 
     echo -e "${CYAN}🗄️  Database:${NC}"
@@ -1584,27 +1729,27 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
     if [ -n "${UPDATE_TAG:-}" ]; then
         log_info "Using tag from parameter: $UPDATE_TAG"
     else
-        # Fetch tags first to show available options
-        log_step "Fetching available tags..."
-        cd "$INSTALL_DIR"
-        if ! git fetch --tags origin > /dev/null 2>&1; then
-            log_error "Failed to fetch tags from repository"
+        # Always list tags from remote so updates remain modular (no touching installed backend/frontend).
+        log_step "Fetching available tags ..."
+        if ! command -v git &> /dev/null; then
+            log_error "git is required to fetch tags"
             exit 1
         fi
-        
+
+        TAGS=$(git ls-remote --tags --refs "$REPO_URL" 2>/dev/null | awk -F/ '{print $NF}' | sort -r)
+        if [ -z "$TAGS" ]; then
+            log_error "No tags found in remote repository"
+            exit 1
+        fi
+
         if [ "$INTERACTIVE_MODE" = true ]; then
             echo -e "\n${CYAN}Available tags:${NC}"
-            git tag -l --sort=-version:refname | head -20 | sed 's/^/  - /'
-            
+            echo "$TAGS" | head -20 | sed 's/^/  - /'
+
             echo -e "\n${YELLOW}Enter the tag to update to:${NC}"
             read -r UPDATE_TAG
         else
-            # Non-interactive: use latest tag
-            UPDATE_TAG=$(git tag -l --sort=-version:refname | head -1)
-            if [ -z "$UPDATE_TAG" ]; then
-                log_error "No tags found in repository"
-                exit 1
-            fi
+            UPDATE_TAG=$(echo "$TAGS" | head -1)
         fi
         
         if [ -z "$UPDATE_TAG" ]; then
@@ -1641,49 +1786,52 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
         log_step "Stopping backend service..."
         $SUDO_CMD systemctl stop clutchpay-backend.service
     fi
-    
-    log_step "Ensuring proper ownership..."
-    # Ensure the current user owns the installation directory
-    if [ "$IS_ROOT" = false ]; then
-        $SUDO_CMD chown -R $USER:$USER "$INSTALL_DIR"
-    fi
-    
-    log_step "Fetching updates from tag: $UPDATE_TAG..."
-    cd "$INSTALL_DIR"
-    
-    # Fetch all tags from origin
-    if ! git fetch --tags origin 2>&1; then
-        log_error "Failed to fetch tags from repository"
-        [ "$UPDATE_BACKEND" = true ] && $SUDO_CMD systemctl start clutchpay-backend.service
+
+    # Clone the selected tag to a temp directory and copy only requested components from it.
+    TEMP_CLONE="/tmp/clutchpay-update-$$"
+    log_step "Cloning source for tag $UPDATE_TAG into $TEMP_CLONE..."
+    clone_repository_with_permissions "$REPO_URL" "$TEMP_CLONE" "$UPDATE_TAG"
+
+    BACKEND_SOURCE_DIR="$TEMP_CLONE/$BACKEND_SUBDIR"
+    FRONTEND_SOURCE_DIR="$TEMP_CLONE/frontend"
+
+    if [ "$UPDATE_BACKEND" = true ] && [ ! -d "$BACKEND_SOURCE_DIR" ]; then
+        log_error "Backend directory not found in tag $UPDATE_TAG at $BACKEND_SOURCE_DIR"
+        rm -rf "$TEMP_CLONE" || true
+        $SUDO_CMD systemctl start clutchpay-backend.service || true
         exit 1
     fi
-    
-    # Verify tag exists
-    if ! git rev-parse "refs/tags/$UPDATE_TAG" > /dev/null 2>&1; then
-        log_error "Tag '$UPDATE_TAG' not found in repository"
-        [ "$UPDATE_BACKEND" = true ] && $SUDO_CMD systemctl start clutchpay-backend.service
+    if [ "$UPDATE_FRONTEND" = true ] && [ ! -d "$FRONTEND_SOURCE_DIR" ]; then
+        log_error "Frontend directory not found in tag $UPDATE_TAG at $FRONTEND_SOURCE_DIR"
+        rm -rf "$TEMP_CLONE" || true
+        [ "$UPDATE_BACKEND" = true ] && $SUDO_CMD systemctl start clutchpay-backend.service || true
         exit 1
-    fi
-    
-    # Checkout the tag
-    if ! git checkout "$UPDATE_TAG" 2>&1; then
-        log_error "Failed to checkout tag $UPDATE_TAG"
-        [ "$UPDATE_BACKEND" = true ] && $SUDO_CMD systemctl start clutchpay-backend.service
-        exit 1
-    fi
-    
-    log_success "Code updated to $UPDATE_TAG"
-    
-    # Remove utils_dev directory (only needed for development)
-    if [ -d "$INSTALL_DIR/utils_dev" ]; then
-        log_step "Removing development utilities (utils_dev)..."
-        rm -rf "$INSTALL_DIR/utils_dev"
-        log_success "Development utilities removed"
     fi
     
     # Update backend if requested
     if [ "$UPDATE_BACKEND" = true ]; then
         log_header "Updating Backend"
+
+        log_step "Updating backend files..."
+        PRESERVED_ENV_FILE=""
+        if [ -f "$BACKEND_DIR/.env" ]; then
+            PRESERVED_ENV_FILE="/tmp/clutchpay-backend-env-$$"
+            $SUDO_CMD cp "$BACKEND_DIR/.env" "$PRESERVED_ENV_FILE"
+        fi
+
+        BACKEND_BACKUP_DIR="${BACKEND_DIR}.backup.$(date +%s)"
+        if [ -d "$BACKEND_DIR" ]; then
+            $SUDO_CMD mv "$BACKEND_DIR" "$BACKEND_BACKUP_DIR"
+        fi
+        $SUDO_CMD mkdir -p "$BACKEND_DIR"
+        $SUDO_CMD cp -r "$BACKEND_SOURCE_DIR"/* "$BACKEND_DIR/"
+
+        if [ -n "$PRESERVED_ENV_FILE" ] && [ -f "$PRESERVED_ENV_FILE" ]; then
+            $SUDO_CMD cp "$PRESERVED_ENV_FILE" "$BACKEND_DIR/.env"
+            $SUDO_CMD rm -f "$PRESERVED_ENV_FILE" || true
+        fi
+
+        log_success "Backend files updated (backup: ${BACKEND_BACKUP_DIR})"
         
         # Preserve existing .env - only add missing variables
         log_step "Checking for missing environment variables..."
@@ -1943,14 +2091,14 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
     if [ "$UPDATE_FRONTEND" = true ]; then
         log_header "Updating Frontend"
         
-        # Determine Apache document root
-        APACHE_DOC_ROOT="${DEFAULT_APACHE_DOC_ROOT}"
+        # Determine current frontend directory
+        APACHE_DOC_ROOT="$(default_frontend_dir_guess)"
         
         if [ "$INTERACTIVE_MODE" = true ]; then
             # Interactive mode: ask for frontend location
-            echo -e "${YELLOW}Enter the Apache document root for frontend (default: ${DEFAULT_APACHE_DOC_ROOT}):${NC}"
+            echo -e "${YELLOW}Enter the frontend directory to update (default: ${APACHE_DOC_ROOT}):${NC}"
             read -r USER_APACHE_DOC_ROOT
-            APACHE_DOC_ROOT="${USER_APACHE_DOC_ROOT:-${DEFAULT_APACHE_DOC_ROOT}}"
+            APACHE_DOC_ROOT="${USER_APACHE_DOC_ROOT:-${APACHE_DOC_ROOT}}"
         fi
         
         # Verify frontend directory exists
@@ -1979,8 +2127,8 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
         
         if [ -f "$APACHE_DOC_ROOT/JS/config.js" ]; then
             log_step "Preserving existing frontend configuration..."
-            PRESERVED_BACKEND_IP=$(grep -oP "const BACKEND_IP = '\K[^']+" "$APACHE_DOC_ROOT/JS/config.js" 2>/dev/null || echo "")
-            PRESERVED_BACKEND_PORT=$(grep -oP "const BACKEND_PORT = \K[0-9]+" "$APACHE_DOC_ROOT/JS/config.js" 2>/dev/null || echo "")
+            PRESERVED_BACKEND_IP=$(sed -n "s/^const BACKEND_IP = '\([^']*\)';/\1/p" "$APACHE_DOC_ROOT/JS/config.js" 2>/dev/null | head -n 1)
+            PRESERVED_BACKEND_PORT=$(sed -n "s/^const BACKEND_PORT = \([0-9][0-9]*\);/\1/p" "$APACHE_DOC_ROOT/JS/config.js" 2>/dev/null | head -n 1)
             
             if [ -n "$PRESERVED_BACKEND_IP" ]; then
                 log_success "Preserved BACKEND_IP: $PRESERVED_BACKEND_IP"
@@ -1991,7 +2139,7 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
         fi
         
         log_step "Updating frontend files..."
-        if ! $SUDO_CMD cp -r "$FRONTEND_DIR"/* "$APACHE_DOC_ROOT/" 2>&1; then
+        if ! $SUDO_CMD cp -r "$FRONTEND_SOURCE_DIR"/* "$APACHE_DOC_ROOT/" 2>&1; then
             log_error "Failed to copy frontend files"
             exit 1
         fi
@@ -2018,6 +2166,16 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
         log_step "Reloading Apache..."
         $SUDO_CMD systemctl reload apache2
         log_success "Apache reloaded"
+
+        # Clean up temp clone used for frontend-only updates
+        if [ -n "${TEMP_CLONE:-}" ] && [ -d "${TEMP_CLONE:-}" ]; then
+            rm -rf "$TEMP_CLONE" || true
+        fi
+    fi
+
+    # Clean up temp clone if it still exists (e.g., backend-only updates)
+    if [ -n "${TEMP_CLONE:-}" ] && [ -d "${TEMP_CLONE:-}" ]; then
+        rm -rf "$TEMP_CLONE" || true
     fi
     
     log_header "Update Complete! 🎉"
@@ -2140,10 +2298,13 @@ config_frontend() {
     log_header "Configure Frontend - Backend Location"
     
     # Ask for frontend directory
-    echo -e "${YELLOW}Frontend directory (default: ${DEFAULT_APACHE_DOC_ROOT}):${NC}"
+    local DEFAULT_FRONTEND_DIR
+    DEFAULT_FRONTEND_DIR="$(default_frontend_dir_guess)"
+
+    echo -e "${YELLOW}Frontend directory (default: ${DEFAULT_FRONTEND_DIR}):${NC}"
     read -r USER_FRONTEND_DIR
     
-    FRONTEND_DIR="${USER_FRONTEND_DIR:-${DEFAULT_APACHE_DOC_ROOT}}"
+    FRONTEND_DIR="${USER_FRONTEND_DIR:-${DEFAULT_FRONTEND_DIR}}"
     
     if [ ! -d "$FRONTEND_DIR" ]; then
         log_error "Frontend directory not found at $FRONTEND_DIR"
